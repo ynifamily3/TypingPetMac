@@ -33,24 +33,33 @@ struct PetPointerAvoidance {
             away.dx /= awayLength
             away.dy /= awayLength
         } else {
-            away = center.x < bounds.midX ? CGVector(dx: -1, dy: 0) : CGVector(dx: 1, dy: 0)
+            let corners = [
+                CGPoint(x: bounds.minX, y: bounds.minY),
+                CGPoint(x: bounds.minX, y: bounds.maxY),
+                CGPoint(x: bounds.maxX, y: bounds.minY),
+                CGPoint(x: bounds.maxX, y: bounds.maxY),
+            ]
+            let farthestCorner = corners.max {
+                hypot($0.x - center.x, $0.y - center.y)
+                    < hypot($1.x - center.x, $1.y - center.y)
+            } ?? CGPoint(x: bounds.maxX, y: bounds.maxY)
+            away = CGVector(dx: farthestCorner.x - center.x, dy: farthestCorner.y - center.y)
+            let length = max(hypot(away.dx, away.dy), 0.001)
+            away.dx /= length
+            away.dy /= length
         }
 
-        let diagonal = CGFloat(1 / sqrt(2.0))
-        let directions: [CGVector] = [
-            away,
-            CGVector(dx: 1, dy: 0),
-            CGVector(dx: -1, dy: 0),
-            CGVector(dx: 0, dy: 1),
-            CGVector(dx: 0, dy: -1),
-            CGVector(dx: diagonal, dy: diagonal),
-            CGVector(dx: -diagonal, dy: diagonal),
-            CGVector(dx: diagonal, dy: -diagonal),
-            CGVector(dx: -diagonal, dy: -diagonal),
-        ]
+        let angles = [0.0, 28.0, -28.0, 55.0, -55.0, 90.0, -90.0]
+        let directions = angles.map { degrees -> CGVector in
+            let radians = CGFloat(degrees * .pi / 180)
+            return CGVector(
+                dx: away.dx * cos(radians) - away.dy * sin(radians),
+                dy: away.dx * sin(radians) + away.dy * cos(radians)
+            )
+        }
         let travel = min(max(triggerDistance - currentDistance + 46, 46), 130)
 
-        return directions.compactMap { direction -> (CGPoint, CGFloat)? in
+        return directions.map { direction -> (CGPoint, CGFloat) in
             let proposed = CGPoint(
                 x: petFrame.origin.x + direction.dx * travel,
                 y: petFrame.origin.y + direction.dy * travel
@@ -58,7 +67,12 @@ struct PetPointerAvoidance {
             let origin = clampedOrigin(proposed, size: petFrame.size, bounds: bounds)
             let movedFrame = CGRect(origin: origin, size: petFrame.size)
             let alignment = direction.dx * away.dx + direction.dy * away.dy
-            let score = distance(from: mouseLocation, to: movedFrame) + alignment * 2
+            let diagonalness = 2 * min(abs(direction.dx), abs(direction.dy))
+            let actualTravel = hypot(origin.x - petFrame.origin.x, origin.y - petFrame.origin.y)
+            let score = distance(from: mouseLocation, to: movedFrame)
+                + max(alignment, 0) * 8
+                + diagonalness * 18
+                + actualTravel * 0.03
             return (origin, score)
         }
         .max(by: { $0.1 < $1.1 })?

@@ -19,6 +19,19 @@ final class PetWindowGeometryTests: XCTestCase {
         )
     }
 
+    func testPointerAvoidanceCanChooseDiagonalEscapeForHorizontalApproach() {
+        let frame = CGRect(x: 180, y: 180, width: 100, height: 100)
+        let target = PetPointerAvoidance.targetOrigin(
+            mouseLocation: CGPoint(x: 160, y: 230),
+            petFrame: frame,
+            bounds: CGRect(x: 0, y: 0, width: 500, height: 500)
+        )
+
+        XCTAssertNotNil(target)
+        XCTAssertGreaterThan(target!.x, frame.origin.x)
+        XCTAssertNotEqual(target!.y, frame.origin.y, accuracy: 0.001)
+    }
+
     func testPointerAvoidanceDoesNothingWhenPointerIsFarAway() {
         XCTAssertNil(PetPointerAvoidance.targetOrigin(
             mouseLocation: CGPoint(x: 0, y: 0),

@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.8.1 - 2026-09-25
+
+- Let pointer avoidance favor playful diagonal escape paths when space permits.
+- Rotate around the direct escape vector and retain edge-aware fallback behavior.
+
 ## 0.8.0 - 2026-09-25
 
 - Add an optional pointer-avoidance mode for click-through position lock.
