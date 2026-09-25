@@ -14,8 +14,237 @@ private final class PetPanel: NSPanel {
     override var canBecomeMain: Bool { false }
 }
 
+private final class PetResizeHandleView: NSView {
+    var onResizeBegan: ((NSPoint) -> Void)?
+    var onResizeDragged: ((NSPoint) -> Void)?
+    var onResizeEnded: (() -> Void)?
+
+    private let imageView: NSImageView
+    private(set) var isDragging = false
+
+    override var mouseDownCanMoveWindow: Bool { false }
+
+    override init(frame frameRect: NSRect) {
+        imageView = NSImageView(frame: .zero)
+        super.init(frame: frameRect)
+        wantsLayer = true
+        layer?.backgroundColor = NSColor.black.withAlphaComponent(0.62).cgColor
+        layer?.cornerRadius = frameRect.width / 2
+
+        let configuration = NSImage.SymbolConfiguration(pointSize: 16, weight: .semibold)
+        imageView.image = NSImage(
+            systemSymbolName: "arrow.up.left.and.arrow.down.right",
+            accessibilityDescription: "크기 조절"
+        )?.withSymbolConfiguration(configuration)
+        imageView.contentTintColor = .white
+        imageView.imageScaling = .scaleProportionallyDown
+        addSubview(imageView)
+        setAccessibilityLabel("펫 크기 조절")
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    override func layout() {
+        super.layout()
+        layer?.cornerRadius = bounds.width / 2
+        imageView.frame = bounds.insetBy(dx: 9, dy: 9)
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        isDragging = true
+        onResizeBegan?(screenLocation(for: event))
+    }
+
+    override func mouseDragged(with event: NSEvent) {
+        onResizeDragged?(screenLocation(for: event))
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        isDragging = false
+        onResizeEnded?()
+    }
+
+    override func resetCursorRects() {
+        addCursorRect(bounds, cursor: .crosshair)
+    }
+
+    private func screenLocation(for event: NSEvent) -> NSPoint {
+        guard let window else { return NSEvent.mouseLocation }
+        return window.convertPoint(toScreen: event.locationInWindow)
+    }
+}
+
 private final class PetContentView: NSView {
-    override var mouseDownCanMoveWindow: Bool { true }
+    var onClose: (() -> Void)?
+    var onResizeBegan: ((NSPoint) -> Void)?
+    var onResizeDragged: ((NSPoint) -> Void)?
+    var onResizeEnded: (() -> Void)?
+    var onMoveBegan: ((NSPoint) -> Void)?
+    var onMoveDragged: ((NSPoint) -> Void)?
+    var onMoveEnded: (() -> Void)?
+
+    private let closeButton: NSButton
+    private let resizeHandle: PetResizeHandleView
+    private var hoverTrackingArea: NSTrackingArea?
+    private var controlsVisible = false
+
+    var controlsEnabled = true {
+        didSet {
+            if !controlsEnabled { setControlsVisible(false, animated: false) }
+        }
+    }
+
+    override init(frame frameRect: NSRect) {
+        closeButton = NSButton(frame: .zero)
+        resizeHandle = PetResizeHandleView(frame: .zero)
+        super.init(frame: frameRect)
+        wantsLayer = true
+        layer?.backgroundColor = NSColor.clear.cgColor
+
+        closeButton.isBordered = false
+        closeButton.image = NSImage(
+            systemSymbolName: "xmark",
+            accessibilityDescription: "펫 숨기기"
+        )?.withSymbolConfiguration(.init(pointSize: 18, weight: .semibold))
+        closeButton.imagePosition = .imageOnly
+        closeButton.contentTintColor = .white
+        closeButton.wantsLayer = true
+        closeButton.layer?.backgroundColor = NSColor.black.withAlphaComponent(0.62).cgColor
+        closeButton.target = self
+        closeButton.action = #selector(closePet)
+        closeButton.setAccessibilityLabel("펫 숨기기")
+
+        resizeHandle.onResizeBegan = { [weak self] in self?.onResizeBegan?($0) }
+        resizeHandle.onResizeDragged = { [weak self] in self?.onResizeDragged?($0) }
+        resizeHandle.onResizeEnded = { [weak self] in self?.onResizeEnded?() }
+
+        addSubview(closeButton)
+        addSubview(resizeHandle)
+        setControlsVisible(false, animated: false)
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    override var mouseDownCanMoveWindow: Bool { false }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        updateTrackingAreas()
+    }
+
+    override func layout() {
+        super.layout()
+        let controlSize: CGFloat = 38
+        let margin: CGFloat = 10
+        closeButton.frame = NSRect(
+            x: margin,
+            y: bounds.maxY - controlSize - margin,
+            width: controlSize,
+            height: controlSize
+        )
+        closeButton.layer?.cornerRadius = controlSize / 2
+        resizeHandle.frame = NSRect(
+            x: bounds.maxX - controlSize - margin,
+            y: bounds.maxY - controlSize - margin,
+            width: controlSize,
+            height: controlSize
+        )
+    }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let hoverTrackingArea { removeTrackingArea(hoverTrackingArea) }
+        let area = NSTrackingArea(
+            rect: bounds,
+            options: [.activeAlways, .inVisibleRect, .mouseEnteredAndExited, .mouseMoved],
+            owner: self,
+            userInfo: nil
+        )
+        addTrackingArea(area)
+        hoverTrackingArea = area
+    }
+
+    override func mouseEntered(with event: NSEvent) {
+        guard controlsEnabled else { return }
+        setControlsVisible(true)
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        if controlsEnabled { setControlsVisible(true) }
+        onMoveBegan?(screenLocation(for: event))
+    }
+
+    override func mouseDragged(with event: NSEvent) {
+        onMoveDragged?(screenLocation(for: event))
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        onMoveEnded?()
+    }
+
+    override func mouseMoved(with event: NSEvent) {
+        guard controlsEnabled else { return }
+        setControlsVisible(true)
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        guard !resizeHandle.isDragging else { return }
+        setControlsVisible(false)
+    }
+
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        if controlsVisible, closeButton.frame.contains(point) { return closeButton }
+        if controlsVisible, resizeHandle.frame.contains(point) { return resizeHandle }
+        return self
+    }
+
+    func hideControls() {
+        setControlsVisible(false, animated: false)
+    }
+
+    @objc private func closePet() {
+        setControlsVisible(false, animated: false)
+        onClose?()
+    }
+
+    private func setControlsVisible(_ visible: Bool, animated: Bool = true) {
+        guard controlsVisible != visible || !animated else { return }
+        controlsVisible = visible
+
+        if visible {
+            closeButton.isHidden = false
+            resizeHandle.isHidden = false
+        }
+
+        let changes = { [weak self] in
+            self?.closeButton.alphaValue = visible ? 1 : 0
+            self?.resizeHandle.alphaValue = visible ? 1 : 0
+        }
+        let completion = { [weak self] in
+            guard let self, !self.controlsVisible else { return }
+            self.closeButton.isHidden = true
+            self.resizeHandle.isHidden = true
+        }
+
+        guard animated else {
+            changes()
+            completion()
+            return
+        }
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0.12
+            context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            closeButton.animator().alphaValue = visible ? 1 : 0
+            resizeHandle.animator().alphaValue = visible ? 1 : 0
+        } completionHandler: {
+            completion()
+        }
+    }
+
+    private func screenLocation(for event: NSEvent) -> NSPoint {
+        guard let window else { return NSEvent.mouseLocation }
+        return window.convertPoint(toScreen: event.locationInWindow)
+    }
 }
 
 @MainActor
@@ -23,14 +252,26 @@ private final class PetController: NSObject, NSWindowDelegate {
     private let library: PetImageLibrary
     private let keyStore: KeyReactionStore
     private let panel: PetPanel
+    private let contentView: PetContentView
     private let imageView: NSImageView
+    private let onScaleChanged: (CGFloat) -> Void
     private var baseSize: NSSize
     private var currentImageKey = ""
     private var idleWorkItem: DispatchWorkItem?
+    private var resizeInitialMouseLocation: NSPoint?
+    private var resizeInitialFrame: NSRect?
+    private var resizeInitialScale: CGFloat?
+    private var moveInitialMouseLocation: NSPoint?
+    private var moveInitialFrame: NSRect?
 
-    init(library: PetImageLibrary, keyStore: KeyReactionStore) {
+    init(
+        library: PetImageLibrary,
+        keyStore: KeyReactionStore,
+        onScaleChanged: @escaping (CGFloat) -> Void = { _ in }
+    ) {
         self.library = library
         self.keyStore = keyStore
+        self.onScaleChanged = onScaleChanged
         let initialImage = library.idleURL.flatMap(NSImage.init(contentsOf:))
         baseSize = Self.normalizedBaseSize(for: initialImage?.size ?? PetConstants.fallbackBaseSize)
         panel = PetPanel(
@@ -43,18 +284,22 @@ private final class PetController: NSObject, NSWindowDelegate {
             defer: false
         )
         imageView = NSImageView(frame: NSRect(origin: .zero, size: panel.frame.size))
+        contentView = PetContentView(frame: NSRect(origin: .zero, size: panel.frame.size))
         super.init()
-
-        let contentView = PetContentView(frame: NSRect(origin: .zero, size: panel.frame.size))
-        contentView.wantsLayer = true
-        contentView.layer?.backgroundColor = NSColor.clear.cgColor
 
         imageView.autoresizingMask = [.width, .height]
         imageView.imageAlignment = .alignCenter
         imageView.imageScaling = .scaleProportionallyUpOrDown
         imageView.animates = true
         imageView.wantsLayer = true
-        contentView.addSubview(imageView)
+        contentView.addSubview(imageView, positioned: .below, relativeTo: nil)
+        contentView.onClose = { [weak self] in self?.hidePet() }
+        contentView.onResizeBegan = { [weak self] in self?.beginResize(at: $0) }
+        contentView.onResizeDragged = { [weak self] in self?.continueResize(at: $0) }
+        contentView.onResizeEnded = { [weak self] in self?.endResize() }
+        contentView.onMoveBegan = { [weak self] in self?.beginMove(at: $0) }
+        contentView.onMoveDragged = { [weak self] in self?.continueMove(at: $0) }
+        contentView.onMoveEnded = { [weak self] in self?.endMove() }
 
         panel.contentView = contentView
         panel.delegate = self
@@ -63,9 +308,11 @@ private final class PetController: NSObject, NSWindowDelegate {
         panel.hasShadow = false
         panel.level = Self.savedAlwaysOnTop ? .floating : .normal
         panel.hidesOnDeactivate = false
-        panel.isMovableByWindowBackground = true
+        panel.isMovableByWindowBackground = false
         panel.ignoresMouseEvents = Self.savedPositionLocked
+        panel.acceptsMouseMovedEvents = true
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+        contentView.controlsEnabled = !Self.savedPositionLocked
 
         let restoredPosition = panel.setFrameUsingName("TypingPetWindow")
         resizePanelForCurrentCanvas(animate: false)
@@ -89,24 +336,16 @@ private final class PetController: NSObject, NSWindowDelegate {
         get { panel.ignoresMouseEvents }
         set {
             panel.ignoresMouseEvents = newValue
+            contentView.controlsEnabled = !newValue
             UserDefaults.standard.set(newValue, forKey: "positionLocked")
         }
     }
 
+    var isPetVisible: Bool { panel.isVisible }
+
     var scale: CGFloat {
         get { Self.savedScale }
-        set {
-            let clamped = max(0.35, min(newValue, 1.25))
-            let oldFrame = panel.frame
-            let newSize = Self.scaledSize(baseSize: baseSize, scale: clamped)
-            let newOrigin = NSPoint(
-                x: oldFrame.midX - newSize.width / 2,
-                y: oldFrame.minY
-            )
-            panel.setFrame(NSRect(origin: newOrigin, size: newSize), display: true, animate: true)
-            UserDefaults.standard.set(Double(clamped), forKey: "petScale")
-            panel.saveFrame(usingName: "TypingPetWindow")
-        }
+        set { applyScale(newValue, anchorOrigin: nil, animate: true) }
     }
 
     var shakeLevel: Int {
@@ -150,6 +389,20 @@ private final class PetController: NSObject, NSWindowDelegate {
         showIdleImage()
     }
 
+    func hidePet() {
+        contentView.hideControls()
+        panel.orderOut(nil)
+    }
+
+    func showPet() {
+        contentView.hideControls()
+        panel.orderFrontRegardless()
+    }
+
+    func togglePetVisibility() {
+        isPetVisible ? hidePet() : showPet()
+    }
+
     func resetPosition() {
         guard let screen = NSScreen.main else { return }
         let size = panel.frame.size
@@ -187,6 +440,69 @@ private final class PetController: NSObject, NSWindowDelegate {
         )
         panel.setFrame(NSRect(origin: newOrigin, size: newSize), display: true, animate: animate)
         panel.saveFrame(usingName: "TypingPetWindow")
+    }
+
+    private func beginResize(at mouseLocation: NSPoint) {
+        resizeInitialMouseLocation = mouseLocation
+        resizeInitialFrame = panel.frame
+        resizeInitialScale = scale
+    }
+
+    private func beginMove(at mouseLocation: NSPoint) {
+        moveInitialMouseLocation = mouseLocation
+        moveInitialFrame = panel.frame
+    }
+
+    private func continueMove(at mouseLocation: NSPoint) {
+        guard let initialMouse = moveInitialMouseLocation,
+              let initialFrame = moveInitialFrame else { return }
+        panel.setFrameOrigin(NSPoint(
+            x: initialFrame.origin.x + mouseLocation.x - initialMouse.x,
+            y: initialFrame.origin.y + mouseLocation.y - initialMouse.y
+        ))
+    }
+
+    private func endMove() {
+        moveInitialMouseLocation = nil
+        moveInitialFrame = nil
+        panel.saveFrame(usingName: "TypingPetWindow")
+    }
+
+    private func continueResize(at mouseLocation: NSPoint) {
+        guard let initialMouse = resizeInitialMouseLocation,
+              let initialFrame = resizeInitialFrame,
+              let initialScale = resizeInitialScale else { return }
+        let delta = NSPoint(
+            x: mouseLocation.x - initialMouse.x,
+            y: mouseLocation.y - initialMouse.y
+        )
+        let newScale = PetResizeGeometry.scale(
+            initialScale: initialScale,
+            initialSize: initialFrame.size,
+            dragDelta: delta
+        )
+        applyScale(newScale, anchorOrigin: initialFrame.origin, animate: false)
+    }
+
+    private func endResize() {
+        resizeInitialMouseLocation = nil
+        resizeInitialFrame = nil
+        resizeInitialScale = nil
+        panel.saveFrame(usingName: "TypingPetWindow")
+    }
+
+    private func applyScale(_ value: CGFloat, anchorOrigin: NSPoint?, animate: Bool) {
+        let clamped = max(0.35, min(value, 1.25))
+        let oldFrame = panel.frame
+        let newSize = Self.scaledSize(baseSize: baseSize, scale: clamped)
+        let newOrigin = anchorOrigin ?? NSPoint(
+            x: oldFrame.midX - newSize.width / 2,
+            y: oldFrame.minY
+        )
+        panel.setFrame(NSRect(origin: newOrigin, size: newSize), display: true, animate: animate)
+        UserDefaults.standard.set(Double(clamped), forKey: "petScale")
+        onScaleChanged(clamped)
+        if animate { panel.saveFrame(usingName: "TypingPetWindow") }
     }
 
     private func bounce() {
@@ -333,6 +649,7 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
     private var petController: PetController!
     private var keyMonitor: GlobalKeyMonitor!
     private var menu: NSMenu!
+    private var petVisibilityItem: NSMenuItem!
     private var alwaysOnTopItem: NSMenuItem!
     private var positionLockedItem: NSMenuItem!
     private var loginItem: NSMenuItem!
@@ -346,7 +663,11 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
     private var settingsModel: TypingPetSettingsModel?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        petController = PetController(library: imageLibrary, keyStore: keyReactionStore)
+        petController = PetController(
+            library: imageLibrary,
+            keyStore: keyReactionStore,
+            onScaleChanged: { [weak self] scale in self?.settingsModel?.syncScale(scale) }
+        )
         configureStatusItem()
 
         keyMonitor = GlobalKeyMonitor { [weak self] stroke in
@@ -372,7 +693,18 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
         settingsModel?.refresh()
     }
 
+    func applicationShouldHandleReopen(
+        _ sender: NSApplication,
+        hasVisibleWindows flag: Bool
+    ) -> Bool {
+        if !petController.isPetVisible {
+            petController.showPet()
+        }
+        return true
+    }
+
     func menuWillOpen(_ menu: NSMenu) {
+        petVisibilityItem.title = petController.isPetVisible ? "펫 숨기기" : "펫 다시 표시"
         alwaysOnTopItem.state = petController.isAlwaysOnTop ? .on : .off
         positionLockedItem.state = petController.isPositionLocked ? .on : .off
         loginItem.state = SMAppService.mainApp.status == .enabled ? .on : .off
@@ -387,6 +719,10 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
 
     @objc private func toggleAlwaysOnTop() {
         petController.isAlwaysOnTop.toggle()
+    }
+
+    @objc private func togglePetVisibility() {
+        petController.togglePetVisibility()
     }
 
     @objc private func togglePositionLock() {
@@ -567,6 +903,8 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
         menu.delegate = self
 
         menu.addItem(makeMenuItem("설정…", action: #selector(showSettings), keyEquivalent: ","))
+        petVisibilityItem = makeMenuItem("펫 숨기기", action: #selector(togglePetVisibility))
+        menu.addItem(petVisibilityItem)
         menu.addItem(.separator())
 
         alwaysOnTopItem = makeMenuItem("항상 위에 표시", action: #selector(toggleAlwaysOnTop))

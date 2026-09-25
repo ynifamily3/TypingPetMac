@@ -77,6 +77,10 @@ final class TypingPetSettingsModel: ObservableObject {
         applyScale(CGFloat(value))
     }
 
+    func syncScale(_ value: CGFloat) {
+        scale = Double(value)
+    }
+
     func setShakeLevel(_ value: Int) {
         shakeLevel = value
         applyShake(value)
