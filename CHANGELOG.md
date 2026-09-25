@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.5.0 - 2026-09-25
+
+- Add velocity-based drag inertia with smooth friction and screen-edge containment.
+- Add springy hover enlargement and pressed-down drag feedback.
+
 ## 0.4.0 - 2026-09-25
 
 - Show hover controls for hiding and resizing the pet.

@@ -79,18 +79,21 @@ private final class PetContentView: NSView {
     var onResizeBegan: ((NSPoint) -> Void)?
     var onResizeDragged: ((NSPoint) -> Void)?
     var onResizeEnded: (() -> Void)?
-    var onMoveBegan: ((NSPoint) -> Void)?
-    var onMoveDragged: ((NSPoint) -> Void)?
-    var onMoveEnded: (() -> Void)?
+    var onMoveBegan: ((PetDragSample) -> Void)?
+    var onMoveDragged: ((PetDragSample) -> Void)?
+    var onMoveEnded: ((PetDragSample) -> Void)?
+    weak var petImageView: NSView?
 
     private let closeButton: NSButton
     private let resizeHandle: PetResizeHandleView
     private var hoverTrackingArea: NSTrackingArea?
     private var controlsVisible = false
+    private var isPointerInside = false
+    private var isBodyPressed = false
 
     var controlsEnabled = true {
         didSet {
-            if !controlsEnabled { setControlsVisible(false, animated: false) }
+            if !controlsEnabled { hideControls() }
         }
     }
 
@@ -134,6 +137,10 @@ private final class PetContentView: NSView {
 
     override func layout() {
         super.layout()
+        petImageView?.frame = bounds.insetBy(
+            dx: bounds.width * 0.015,
+            dy: bounds.height * 0.015
+        )
         let controlSize: CGFloat = 38
         let margin: CGFloat = 10
         closeButton.frame = NSRect(
@@ -166,20 +173,27 @@ private final class PetContentView: NSView {
 
     override func mouseEntered(with event: NSEvent) {
         guard controlsEnabled else { return }
+        isPointerInside = true
         setControlsVisible(true)
+        updateInteractionScale()
     }
 
     override func mouseDown(with event: NSEvent) {
         if controlsEnabled { setControlsVisible(true) }
-        onMoveBegan?(screenLocation(for: event))
+        isBodyPressed = true
+        updateInteractionScale(pressed: true)
+        onMoveBegan?(dragSample(for: event))
     }
 
     override func mouseDragged(with event: NSEvent) {
-        onMoveDragged?(screenLocation(for: event))
+        onMoveDragged?(dragSample(for: event))
     }
 
     override func mouseUp(with event: NSEvent) {
-        onMoveEnded?()
+        isBodyPressed = false
+        isPointerInside = bounds.contains(convert(event.locationInWindow, from: nil))
+        updateInteractionScale()
+        onMoveEnded?(dragSample(for: event))
     }
 
     override func mouseMoved(with event: NSEvent) {
@@ -188,8 +202,10 @@ private final class PetContentView: NSView {
     }
 
     override func mouseExited(with event: NSEvent) {
+        isPointerInside = false
         guard !resizeHandle.isDragging else { return }
         setControlsVisible(false)
+        if !isBodyPressed { updateInteractionScale() }
     }
 
     override func hitTest(_ point: NSPoint) -> NSView? {
@@ -200,6 +216,9 @@ private final class PetContentView: NSView {
 
     func hideControls() {
         setControlsVisible(false, animated: false)
+        isPointerInside = false
+        isBodyPressed = false
+        updateInteractionScale(animated: false)
     }
 
     @objc private func closePet() {
@@ -241,9 +260,45 @@ private final class PetContentView: NSView {
         }
     }
 
+    private func updateInteractionScale(pressed: Bool? = nil, animated: Bool = true) {
+        let targetScale: CGFloat
+        if pressed ?? isBodyPressed {
+            targetScale = 0.94
+        } else if isPointerInside, controlsEnabled {
+            targetScale = 1.025
+        } else {
+            targetScale = 1
+        }
+        animateImageScale(to: targetScale, animated: animated)
+    }
+
+    private func animateImageScale(to targetScale: CGFloat, animated: Bool) {
+        guard let imageLayer = petImageView?.layer else { return }
+        imageLayer.removeAnimation(forKey: "interactionScale")
+        let currentScale = (imageLayer.presentation()?.value(forKeyPath: "transform.scale") as? CGFloat)
+            ?? (imageLayer.value(forKeyPath: "transform.scale") as? CGFloat)
+            ?? 1
+        imageLayer.setValue(targetScale, forKeyPath: "transform.scale")
+        guard animated else { return }
+
+        let animation = CASpringAnimation(keyPath: "transform.scale")
+        animation.fromValue = currentScale
+        animation.toValue = targetScale
+        animation.mass = 0.75
+        animation.stiffness = targetScale < currentScale ? 360 : 220
+        animation.damping = targetScale < currentScale ? 22 : 15
+        animation.initialVelocity = 0
+        animation.duration = animation.settlingDuration
+        imageLayer.add(animation, forKey: "interactionScale")
+    }
+
     private func screenLocation(for event: NSEvent) -> NSPoint {
         guard let window else { return NSEvent.mouseLocation }
         return window.convertPoint(toScreen: event.locationInWindow)
+    }
+
+    private func dragSample(for event: NSEvent) -> PetDragSample {
+        PetDragSample(point: screenLocation(for: event), timestamp: event.timestamp)
     }
 }
 
@@ -263,6 +318,11 @@ private final class PetController: NSObject, NSWindowDelegate {
     private var resizeInitialScale: CGFloat?
     private var moveInitialMouseLocation: NSPoint?
     private var moveInitialFrame: NSRect?
+    private var moveSamples: [PetDragSample] = []
+    private var inertiaTimer: Timer?
+    private var inertiaVelocity: CGVector = .zero
+    private var inertiaLastTimestamp: TimeInterval?
+    private var inertiaBounds: NSRect?
 
     init(
         library: PetImageLibrary,
@@ -287,19 +347,20 @@ private final class PetController: NSObject, NSWindowDelegate {
         contentView = PetContentView(frame: NSRect(origin: .zero, size: panel.frame.size))
         super.init()
 
-        imageView.autoresizingMask = [.width, .height]
+        imageView.autoresizingMask = []
         imageView.imageAlignment = .alignCenter
         imageView.imageScaling = .scaleProportionallyUpOrDown
         imageView.animates = true
         imageView.wantsLayer = true
+        contentView.petImageView = imageView
         contentView.addSubview(imageView, positioned: .below, relativeTo: nil)
         contentView.onClose = { [weak self] in self?.hidePet() }
         contentView.onResizeBegan = { [weak self] in self?.beginResize(at: $0) }
         contentView.onResizeDragged = { [weak self] in self?.continueResize(at: $0) }
         contentView.onResizeEnded = { [weak self] in self?.endResize() }
-        contentView.onMoveBegan = { [weak self] in self?.beginMove(at: $0) }
-        contentView.onMoveDragged = { [weak self] in self?.continueMove(at: $0) }
-        contentView.onMoveEnded = { [weak self] in self?.endMove() }
+        contentView.onMoveBegan = { [weak self] in self?.beginMove(with: $0) }
+        contentView.onMoveDragged = { [weak self] in self?.continueMove(with: $0) }
+        contentView.onMoveEnded = { [weak self] in self?.endMove(with: $0) }
 
         panel.contentView = contentView
         panel.delegate = self
@@ -335,6 +396,7 @@ private final class PetController: NSObject, NSWindowDelegate {
     var isPositionLocked: Bool {
         get { panel.ignoresMouseEvents }
         set {
+            if newValue { stopInertia(savePosition: true) }
             panel.ignoresMouseEvents = newValue
             contentView.controlsEnabled = !newValue
             UserDefaults.standard.set(newValue, forKey: "positionLocked")
@@ -390,6 +452,7 @@ private final class PetController: NSObject, NSWindowDelegate {
     }
 
     func hidePet() {
+        stopInertia(savePosition: true)
         contentView.hideControls()
         panel.orderOut(nil)
     }
@@ -404,6 +467,7 @@ private final class PetController: NSObject, NSWindowDelegate {
     }
 
     func resetPosition() {
+        stopInertia(savePosition: false)
         guard let screen = NSScreen.main else { return }
         let size = panel.frame.size
         let visible = screen.visibleFrame
@@ -443,29 +507,87 @@ private final class PetController: NSObject, NSWindowDelegate {
     }
 
     private func beginResize(at mouseLocation: NSPoint) {
+        stopInertia(savePosition: true)
         resizeInitialMouseLocation = mouseLocation
         resizeInitialFrame = panel.frame
         resizeInitialScale = scale
     }
 
-    private func beginMove(at mouseLocation: NSPoint) {
-        moveInitialMouseLocation = mouseLocation
+    private func beginMove(with sample: PetDragSample) {
+        stopInertia(savePosition: false)
+        moveInitialMouseLocation = sample.point
         moveInitialFrame = panel.frame
+        moveSamples = [sample]
     }
 
-    private func continueMove(at mouseLocation: NSPoint) {
+    private func continueMove(with sample: PetDragSample) {
         guard let initialMouse = moveInitialMouseLocation,
               let initialFrame = moveInitialFrame else { return }
         panel.setFrameOrigin(NSPoint(
-            x: initialFrame.origin.x + mouseLocation.x - initialMouse.x,
-            y: initialFrame.origin.y + mouseLocation.y - initialMouse.y
+            x: initialFrame.origin.x + sample.point.x - initialMouse.x,
+            y: initialFrame.origin.y + sample.point.y - initialMouse.y
         ))
+        appendMoveSample(sample)
     }
 
-    private func endMove() {
+    private func endMove(with sample: PetDragSample) {
+        appendMoveSample(sample)
+        let velocity = PetMotionPhysics.releaseVelocity(samples: moveSamples)
         moveInitialMouseLocation = nil
         moveInitialFrame = nil
-        panel.saveFrame(usingName: "TypingPetWindow")
+        moveSamples.removeAll()
+        startInertia(with: velocity)
+    }
+
+    private func appendMoveSample(_ sample: PetDragSample) {
+        moveSamples.append(sample)
+        let cutoff = sample.timestamp - 0.15
+        moveSamples.removeAll { $0.timestamp < cutoff }
+    }
+
+    private func startInertia(with velocity: CGVector) {
+        let speed = hypot(velocity.dx, velocity.dy)
+        guard speed >= 45 else {
+            panel.saveFrame(usingName: "TypingPetWindow")
+            return
+        }
+        inertiaVelocity = velocity
+        inertiaLastTimestamp = ProcessInfo.processInfo.systemUptime
+        inertiaBounds = (panel.screen ?? NSScreen.main)?.visibleFrame
+        let timer = Timer(timeInterval: 1.0 / 60.0, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.advanceInertia() }
+        }
+        inertiaTimer = timer
+        RunLoop.main.add(timer, forMode: .common)
+    }
+
+    private func advanceInertia() {
+        guard let lastTimestamp = inertiaLastTimestamp else { return }
+        let now = ProcessInfo.processInfo.systemUptime
+        let elapsed = min(max(now - lastTimestamp, 1.0 / 240.0), 1.0 / 30.0)
+        inertiaLastTimestamp = now
+        let visibleFrame = inertiaBounds ?? panel.frame
+        let step = PetMotionPhysics.advance(
+            origin: panel.frame.origin,
+            size: panel.frame.size,
+            velocity: inertiaVelocity,
+            elapsed: elapsed,
+            bounds: visibleFrame
+        )
+        inertiaVelocity = step.velocity
+        panel.setFrameOrigin(step.origin)
+        if hypot(step.velocity.dx, step.velocity.dy) < 18 {
+            stopInertia(savePosition: true)
+        }
+    }
+
+    private func stopInertia(savePosition: Bool) {
+        inertiaTimer?.invalidate()
+        inertiaTimer = nil
+        inertiaVelocity = .zero
+        inertiaLastTimestamp = nil
+        inertiaBounds = nil
+        if savePosition { panel.saveFrame(usingName: "TypingPetWindow") }
     }
 
     private func continueResize(at mouseLocation: NSPoint) {
