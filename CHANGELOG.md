@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.9.0 - 2026-09-25
+
+- Standardize settings spacing on a 4-point grid across all tabs.
+- Replace the nested grouped form with flat sections and aligned rows.
+- Unify gallery cards, action groups, empty states, and window margins.
+
 ## 0.8.1 - 2026-09-25
 
 - Let pointer avoidance favor playful diagonal escape paths when space permits.

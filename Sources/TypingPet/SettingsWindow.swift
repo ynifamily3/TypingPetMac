@@ -221,8 +221,8 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         let root = SettingsRootView(model: model)
         let window = NSWindow(contentViewController: NSHostingController(rootView: root))
         window.title = "Typing Pet 설정"
-        window.setContentSize(NSSize(width: 760, height: 570))
-        window.minSize = NSSize(width: 680, height: 500)
+        window.setContentSize(NSSize(width: 780, height: 600))
+        window.minSize = NSSize(width: 700, height: 540)
         window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
         window.center()
         super.init(window: window)
@@ -255,7 +255,7 @@ private struct SettingsRootView: View {
             KeyReactionSettingsView(model: model)
                 .tabItem { Label("키 반응", systemImage: "keyboard") }
         }
-        .padding(18)
+        .padding(SettingsMetrics.space4)
         .alert("오류", isPresented: Binding(
             get: { model.errorMessage != nil },
             set: { if !$0 { model.errorMessage = nil } }
@@ -265,83 +265,212 @@ private struct SettingsRootView: View {
     }
 }
 
+private enum SettingsMetrics {
+    static let space1: CGFloat = 4
+    static let space2: CGFloat = 8
+    static let space3: CGFloat = 12
+    static let space4: CGFloat = 16
+    static let space6: CGFloat = 24
+    static let labelWidth: CGFloat = 132
+    static let rowHeight: CGFloat = 40
+}
+
+private struct FlatSettingsSection<Content: View>: View {
+    let title: String
+    let content: Content
+
+    init(_ title: String, @ViewBuilder content: () -> Content) {
+        self.title = title
+        self.content = content()
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: SettingsMetrics.space2) {
+            Text(title)
+                .font(.headline)
+            content
+        }
+    }
+}
+
+private struct SettingsRow<Content: View>: View {
+    let content: Content
+
+    init(@ViewBuilder content: () -> Content) {
+        self.content = content()
+    }
+
+    var body: some View {
+        content
+            .frame(maxWidth: .infinity, minHeight: SettingsMetrics.rowHeight, alignment: .leading)
+    }
+}
+
+private struct SettingsSliderRow: View {
+    let title: String
+    @Binding var value: Double
+    let range: ClosedRange<Double>
+
+    var body: some View {
+        SettingsRow {
+            HStack(spacing: SettingsMetrics.space3) {
+                Text(title)
+                    .frame(width: SettingsMetrics.labelWidth, alignment: .leading)
+                Slider(value: $value, in: range)
+                Text("\(Int(value * 100))%")
+                    .monospacedDigit()
+                    .frame(width: 48, alignment: .trailing)
+            }
+        }
+    }
+}
+
+private struct SettingsToggleRow: View {
+    let title: String
+    @Binding var isOn: Bool
+    var isEnabled = true
+
+    var body: some View {
+        SettingsRow {
+            HStack(spacing: SettingsMetrics.space3) {
+                Text(title)
+                Spacer(minLength: SettingsMetrics.space3)
+                Toggle("", isOn: $isOn)
+                    .labelsHidden()
+            }
+        }
+        .disabled(!isEnabled)
+    }
+}
+
+private struct SettingsNote: View {
+    let text: String
+
+    var body: some View {
+        Text(text)
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(.vertical, SettingsMetrics.space2)
+    }
+}
+
 private struct GeneralSettingsView: View {
     @ObservedObject var model: TypingPetSettingsModel
 
     var body: some View {
-        Form {
-            Section("펫") {
-                HStack {
-                    Text("크기")
-                    Slider(value: Binding(get: { model.scale }, set: model.setScale), in: 0.35...1.25)
-                    Text("\(Int(model.scale * 100))%").monospacedDigit().frame(width: 48)
+        ScrollView {
+            VStack(alignment: .leading, spacing: SettingsMetrics.space6) {
+                FlatSettingsSection("펫") {
+                    VStack(spacing: 0) {
+                        SettingsSliderRow(
+                            title: "크기",
+                            value: Binding(get: { model.scale }, set: model.setScale),
+                            range: 0.35...1.25
+                        )
+                        Divider()
+                        SettingsSliderRow(
+                            title: "상시 투명도",
+                            value: Binding(get: { model.restingOpacity }, set: model.setRestingOpacity),
+                            range: 0...1
+                        )
+                        Divider()
+                        SettingsSliderRow(
+                            title: "호버 시 투명도",
+                            value: Binding(get: { model.hoverOpacity }, set: model.setHoverOpacity),
+                            range: 0...1
+                        )
+                        Divider()
+                        SettingsNote(text: "100%는 선명하게, 0%는 완전히 투명하게 표시됩니다.")
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        Divider()
+                        SettingsRow {
+                            HStack(spacing: SettingsMetrics.space3) {
+                                Text("통통 튀는 정도")
+                                Spacer(minLength: SettingsMetrics.space3)
+                                Picker("", selection: Binding(get: { model.shakeLevel }, set: model.setShakeLevel)) {
+                                    Text("끔").tag(0)
+                                    Text("약하게").tag(1)
+                                    Text("보통").tag(2)
+                                    Text("강하게").tag(3)
+                                }
+                                .labelsHidden()
+                                .frame(width: 112)
+                            }
+                        }
+                        Divider()
+                        SettingsToggleRow(
+                            title: "항상 다른 창 위에 표시",
+                            isOn: Binding(get: { model.alwaysOnTop }, set: model.setAlwaysOnTop)
+                        )
+                        Divider()
+                        SettingsToggleRow(
+                            title: "위치 잠금 (클릭 통과)",
+                            isOn: Binding(get: { model.positionLocked }, set: model.setPositionLocked)
+                        )
+                        Divider()
+                        SettingsToggleRow(
+                            title: "위치 잠금 중 마우스 피하기",
+                            isOn: Binding(get: { model.avoidsPointerWhenLocked }, set: model.setPointerAvoidance),
+                            isEnabled: model.positionLocked
+                        )
+                        Divider()
+                        SettingsNote(text: "커서가 가까워지면 펫이 화면 안에서 부드럽게 자리를 비킵니다.")
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
                 }
-                HStack {
-                    Text("상시 투명도")
-                    Slider(value: Binding(get: { model.restingOpacity }, set: model.setRestingOpacity), in: 0...1)
-                    Text("\(Int(model.restingOpacity * 100))%").monospacedDigit().frame(width: 48)
+
+                FlatSettingsSection("시스템") {
+                    VStack(spacing: 0) {
+                        SettingsToggleRow(
+                            title: "로그인 시 자동 실행",
+                            isOn: Binding(get: { model.launchAtLogin }, set: model.toggleLaunchAtLogin)
+                        )
+                        Divider()
+                        SettingsRow {
+                            HStack(spacing: SettingsMetrics.space3) {
+                                Label(
+                                    model.inputMonitoringGranted ? "입력 모니터링 권한 허용됨" : "입력 모니터링 권한 필요",
+                                    systemImage: model.inputMonitoringGranted ? "checkmark.circle.fill" : "exclamationmark.triangle.fill"
+                                )
+                                .foregroundStyle(model.inputMonitoringGranted ? .green : .orange)
+                                Spacer(minLength: SettingsMetrics.space3)
+                                Button("시스템 설정 열기") { model.openInputMonitoringSettings() }
+                            }
+                        }
+                        Divider()
+                        SettingsNote(text: "키 조합 판별에는 물리 키 코드와 보조 키만 사용하며, 입력 문자는 저장하거나 전송하지 않습니다.")
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
                 }
-                HStack {
-                    Text("호버 시 투명도")
-                    Slider(value: Binding(get: { model.hoverOpacity }, set: model.setHoverOpacity), in: 0...1)
-                    Text("\(Int(model.hoverOpacity * 100))%").monospacedDigit().frame(width: 48)
-                }
-                Text("100%는 선명하게, 0%는 완전히 투명하게 표시됩니다.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Picker("통통 튀는 정도", selection: Binding(get: { model.shakeLevel }, set: model.setShakeLevel)) {
-                    Text("끔").tag(0); Text("약하게").tag(1); Text("보통").tag(2); Text("강하게").tag(3)
-                }
-                Toggle("항상 다른 창 위에 표시", isOn: Binding(get: { model.alwaysOnTop }, set: model.setAlwaysOnTop))
-                Toggle("위치 잠금 (클릭 통과)", isOn: Binding(get: { model.positionLocked }, set: model.setPositionLocked))
-                Toggle(
-                    "위치 잠금 중 마우스 피하기",
-                    isOn: Binding(get: { model.avoidsPointerWhenLocked }, set: model.setPointerAvoidance)
-                )
-                .disabled(!model.positionLocked)
-                Text("커서가 가까워지면 펫이 화면 안에서 부드럽게 자리를 비킵니다.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
             }
-            Section("시스템") {
-                Toggle("로그인 시 자동 실행", isOn: Binding(get: { model.launchAtLogin }, set: model.toggleLaunchAtLogin))
-                HStack {
-                    Label(
-                        model.inputMonitoringGranted ? "입력 모니터링 권한 허용됨" : "입력 모니터링 권한 필요",
-                        systemImage: model.inputMonitoringGranted ? "checkmark.circle.fill" : "exclamationmark.triangle.fill"
-                    ).foregroundStyle(model.inputMonitoringGranted ? .green : .orange)
-                    Spacer()
-                    Button("시스템 설정 열기") { model.openInputMonitoringSettings() }
-                }
-                Text("키 조합 판별에는 물리 키 코드와 보조 키만 사용하며, 입력 문자는 저장하거나 전송하지 않습니다.")
-                    .font(.caption).foregroundStyle(.secondary)
-            }
+            .padding(SettingsMetrics.space4)
         }
-        .formStyle(.grouped)
     }
 }
 
 private struct GallerySettingsView: View {
     @ObservedObject var model: TypingPetSettingsModel
-    private let columns = [GridItem(.adaptive(minimum: 150, maximum: 190), spacing: 14)]
+    private let columns = [GridItem(.adaptive(minimum: 152, maximum: 192), spacing: SettingsMetrics.space4)]
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
+        VStack(alignment: .leading, spacing: SettingsMetrics.space4) {
+            HStack(spacing: SettingsMetrics.space3) {
                 Text("이미지 세트").font(.title2).bold()
                 Spacer()
                 Button { model.importImageSet() } label: { Label("폴더 추가", systemImage: "plus") }
             }
             ScrollView {
-                LazyVGrid(columns: columns, spacing: 14) {
+                LazyVGrid(columns: columns, spacing: SettingsMetrics.space4) {
                     ForEach(model.imageSets) { set in
                         GalleryCard(set: set, image: model.thumbnail(for: set), active: set.id == model.activeSetID, selected: set.id == model.selectedSetID)
                             .onTapGesture { model.selectedSetID = set.id }
                     }
-                }.padding(3)
+                }
+                .padding(SettingsMetrics.space1)
             }
             Divider()
-            HStack {
+            HStack(spacing: SettingsMetrics.space2) {
                 if let set = model.selectedSet {
                     Text("\(set.name) · 반응 이미지 \(model.library.reactionURLs(for: set).count)장")
                         .foregroundStyle(.secondary)
@@ -352,6 +481,7 @@ private struct GallerySettingsView: View {
                 Button("적용") { model.activateSelectedSet() }.buttonStyle(.borderedProminent).disabled(model.selectedSetID == model.activeSetID)
             }
         }
+        .padding(SettingsMetrics.space4)
     }
 }
 
@@ -362,17 +492,29 @@ private struct GalleryCard: View {
     let selected: Bool
 
     var body: some View {
-        VStack(spacing: 8) {
+        VStack(spacing: SettingsMetrics.space2) {
             ZStack(alignment: .topTrailing) {
-                RoundedRectangle(cornerRadius: 10).fill(Color(nsColor: .controlBackgroundColor)).frame(height: 112)
-                if let image { Image(nsImage: image).resizable().scaledToFit().padding(8).frame(maxWidth: .infinity, maxHeight: 112) }
-                if active { Image(systemName: "checkmark.circle.fill").foregroundStyle(.green).padding(7) }
+                RoundedRectangle(cornerRadius: SettingsMetrics.space2)
+                    .fill(Color(nsColor: .controlBackgroundColor))
+                    .frame(height: 112)
+                if let image {
+                    Image(nsImage: image)
+                        .resizable()
+                        .scaledToFit()
+                        .padding(SettingsMetrics.space3)
+                        .frame(maxWidth: .infinity, maxHeight: 112)
+                }
+                if active {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundStyle(.green)
+                        .padding(SettingsMetrics.space2)
+                }
             }
             Text(set.name).lineLimit(1).frame(maxWidth: .infinity, alignment: .leading)
         }
-        .padding(8)
-        .background(RoundedRectangle(cornerRadius: 12).fill(selected ? Color.accentColor.opacity(0.13) : .clear))
-        .overlay(RoundedRectangle(cornerRadius: 12).stroke(selected ? Color.accentColor : Color.secondary.opacity(0.2), lineWidth: selected ? 2 : 1))
+        .padding(SettingsMetrics.space3)
+        .background(RoundedRectangle(cornerRadius: SettingsMetrics.space3).fill(selected ? Color.accentColor.opacity(0.13) : .clear))
+        .overlay(RoundedRectangle(cornerRadius: SettingsMetrics.space3).stroke(selected ? Color.accentColor : Color.secondary.opacity(0.2), lineWidth: selected ? 2 : 1))
     }
 }
 
@@ -382,9 +524,9 @@ private struct KeyReactionSettingsView: View {
     @State private var isCapturing = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                VStack(alignment: .leading, spacing: 3) {
+        VStack(alignment: .leading, spacing: SettingsMetrics.space4) {
+            HStack(spacing: SettingsMetrics.space3) {
+                VStack(alignment: .leading, spacing: SettingsMetrics.space1) {
                     Text("특정 키 반응").font(.title2).bold()
                     Text("등록한 키 또는 키 조합에는 지정한 이미지가 우선 표시됩니다.").foregroundStyle(.secondary)
                 }
@@ -392,14 +534,14 @@ private struct KeyReactionSettingsView: View {
                 Button { chooseImage() } label: { Label("규칙 추가", systemImage: "plus") }
             }
             if model.rules.isEmpty {
-                VStack(spacing: 10) {
+                VStack(spacing: SettingsMetrics.space2) {
                     Image(systemName: "keyboard").font(.system(size: 40)).foregroundStyle(.secondary)
                     Text("등록된 키 반응이 없습니다").font(.headline)
                     Text("규칙 추가를 눌러 이미지와 키 조합을 지정하세요.").foregroundStyle(.secondary)
                 }.frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 List(model.rules) { rule in
-                    HStack(spacing: 12) {
+                    HStack(spacing: SettingsMetrics.space3) {
                         Group {
                             if let image = model.ruleImage(for: rule) { Image(nsImage: image).resizable().scaledToFit() }
                             else { Image(systemName: "photo") }
@@ -408,10 +550,19 @@ private struct KeyReactionSettingsView: View {
                         Spacer()
                         Button(role: .destructive) { model.removeRule(rule) } label: { Image(systemName: "trash") }
                             .buttonStyle(.borderless)
-                    }.padding(.vertical, 4)
+                    }
+                    .padding(.vertical, SettingsMetrics.space2)
+                    .listRowInsets(EdgeInsets(
+                        top: 0,
+                        leading: SettingsMetrics.space1,
+                        bottom: 0,
+                        trailing: SettingsMetrics.space1
+                    ))
                 }
+                .listStyle(.plain)
             }
         }
+        .padding(SettingsMetrics.space4)
         .sheet(isPresented: $isCapturing) {
             KeyCaptureSheet { stroke in
                 if let url = pendingImageURL { model.addRule(stroke: stroke, imageURL: url) }
