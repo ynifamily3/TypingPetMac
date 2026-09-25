@@ -137,10 +137,15 @@ private final class PetContentView: NSView {
 
     override func layout() {
         super.layout()
-        petImageView?.frame = bounds.insetBy(
+        let imageFrame = bounds.insetBy(
             dx: bounds.width * 0.015,
             dy: bounds.height * 0.015
         )
+        petImageView?.frame = imageFrame
+        if let imageLayer = petImageView?.layer {
+            imageLayer.anchorPoint = CGPoint(x: 0.5, y: 0.5)
+            imageLayer.position = CGPoint(x: imageFrame.midX, y: imageFrame.midY)
+        }
         let controlSize: CGFloat = 38
         let margin: CGFloat = 10
         closeButton.frame = NSRect(

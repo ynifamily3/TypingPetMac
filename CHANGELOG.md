@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.5.1 - 2026-09-25
+
+- Center the image-layer anchor so hover and pressed spring effects scale around the pet's midpoint.
+
 ## 0.5.0 - 2026-09-25
 
 - Add velocity-based drag inertia with smooth friction and screen-edge containment.
