@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.6.0 - 2026-09-25
+
+- Fade the pet image smoothly based on pointer proximity, down to 30% opacity on hover.
+- Keep hide and resize controls fully visible while the pet image fades.
+
 ## 0.5.1 - 2026-09-25
 
 - Center the image-layer anchor so hover and pressed spring effects scale around the pet's midpoint.

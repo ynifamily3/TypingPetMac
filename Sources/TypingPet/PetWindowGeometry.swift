@@ -1,5 +1,28 @@
 import Foundation
 
+struct PetProximityOpacity {
+    static func distance(from point: CGPoint, to rect: CGRect) -> CGFloat {
+        let horizontal = max(rect.minX - point.x, 0, point.x - rect.maxX)
+        let vertical = max(rect.minY - point.y, 0, point.y - rect.maxY)
+        return hypot(horizontal, vertical)
+    }
+
+    static func opacity(
+        mouseLocation: CGPoint,
+        petFrame: CGRect,
+        proximityRadius: CGFloat = 140,
+        minimumOpacity: CGFloat = 0.3
+    ) -> CGFloat {
+        guard proximityRadius > 0 else { return 1 }
+        let normalizedDistance = min(
+            max(distance(from: mouseLocation, to: petFrame) / proximityRadius, 0),
+            1
+        )
+        let easedDistance = normalizedDistance * normalizedDistance * (3 - 2 * normalizedDistance)
+        return minimumOpacity + (1 - minimumOpacity) * easedDistance
+    }
+}
+
 struct PetDragSample {
     let point: CGPoint
     let timestamp: TimeInterval

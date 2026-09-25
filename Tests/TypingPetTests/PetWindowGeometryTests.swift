@@ -2,6 +2,43 @@ import XCTest
 @testable import TypingPet
 
 final class PetWindowGeometryTests: XCTestCase {
+    func testProximityOpacityFadesSmoothlyTowardPet() {
+        let frame = CGRect(x: 100, y: 100, width: 200, height: 100)
+
+        XCTAssertEqual(
+            PetProximityOpacity.opacity(
+                mouseLocation: CGPoint(x: 200, y: 150),
+                petFrame: frame
+            ),
+            0.3,
+            accuracy: 0.0001
+        )
+        XCTAssertEqual(
+            PetProximityOpacity.opacity(
+                mouseLocation: CGPoint(x: 440, y: 150),
+                petFrame: frame
+            ),
+            1,
+            accuracy: 0.0001
+        )
+        XCTAssertEqual(
+            PetProximityOpacity.opacity(
+                mouseLocation: CGPoint(x: 370, y: 150),
+                petFrame: frame
+            ),
+            0.65,
+            accuracy: 0.0001
+        )
+    }
+
+    func testProximityDistanceUsesNearestCorner() {
+        let distance = PetProximityOpacity.distance(
+            from: CGPoint(x: 30, y: 40),
+            to: CGRect(x: 0, y: 0, width: 10, height: 10)
+        )
+        XCTAssertEqual(distance, hypot(20, 30), accuracy: 0.0001)
+    }
+
     func testReleaseVelocityUsesRecentPointerMovement() {
         let velocity = PetMotionPhysics.releaseVelocity(samples: [
             PetDragSample(point: CGPoint(x: 0, y: 0), timestamp: 1.0),

@@ -328,6 +328,8 @@ private final class PetController: NSObject, NSWindowDelegate {
     private var inertiaVelocity: CGVector = .zero
     private var inertiaLastTimestamp: TimeInterval?
     private var inertiaBounds: NSRect?
+    private var globalMouseMonitor: Any?
+    private var localMouseMonitor: Any?
 
     init(
         library: PetImageLibrary,
@@ -388,6 +390,8 @@ private final class PetController: NSObject, NSWindowDelegate {
 
         showIdleImage()
         panel.orderFrontRegardless()
+        startMouseProximityMonitoring()
+        updatePetOpacity()
     }
 
     var isAlwaysOnTop: Bool {
@@ -465,6 +469,7 @@ private final class PetController: NSObject, NSWindowDelegate {
     func showPet() {
         contentView.hideControls()
         panel.orderFrontRegardless()
+        updatePetOpacity()
     }
 
     func togglePetVisibility() {
@@ -581,6 +586,7 @@ private final class PetController: NSObject, NSWindowDelegate {
         )
         inertiaVelocity = step.velocity
         panel.setFrameOrigin(step.origin)
+        updatePetOpacity()
         if hypot(step.velocity.dx, step.velocity.dy) < 18 {
             stopInertia(savePosition: true)
         }
@@ -593,6 +599,41 @@ private final class PetController: NSObject, NSWindowDelegate {
         inertiaLastTimestamp = nil
         inertiaBounds = nil
         if savePosition { panel.saveFrame(usingName: "TypingPetWindow") }
+    }
+
+    private func startMouseProximityMonitoring() {
+        let events: NSEvent.EventTypeMask = [
+            .mouseMoved,
+            .leftMouseDragged,
+            .rightMouseDragged,
+            .otherMouseDragged,
+        ]
+        globalMouseMonitor = NSEvent.addGlobalMonitorForEvents(matching: events) { [weak self] _ in
+            MainActor.assumeIsolated { self?.updatePetOpacity() }
+        }
+        localMouseMonitor = NSEvent.addLocalMonitorForEvents(matching: events) { [weak self] event in
+            MainActor.assumeIsolated { self?.updatePetOpacity() }
+            return event
+        }
+    }
+
+    private func updatePetOpacity(animated: Bool = true) {
+        guard panel.isVisible, let imageLayer = imageView.layer else { return }
+        let targetOpacity = PetProximityOpacity.opacity(
+            mouseLocation: NSEvent.mouseLocation,
+            petFrame: panel.frame
+        )
+        let currentOpacity = imageLayer.presentation()?.opacity ?? imageLayer.opacity
+        imageLayer.removeAnimation(forKey: "proximityOpacity")
+        imageLayer.opacity = Float(targetOpacity)
+        guard animated, abs(CGFloat(currentOpacity) - targetOpacity) > 0.002 else { return }
+
+        let animation = CABasicAnimation(keyPath: "opacity")
+        animation.fromValue = currentOpacity
+        animation.toValue = targetOpacity
+        animation.duration = 0.22
+        animation.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+        imageLayer.add(animation, forKey: "proximityOpacity")
     }
 
     private func continueResize(at mouseLocation: NSPoint) {
