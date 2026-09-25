@@ -390,7 +390,7 @@ private final class PetController: NSObject, NSWindowDelegate {
 
         showIdleImage()
         panel.orderFrontRegardless()
-        startMouseProximityMonitoring()
+        startMouseHoverMonitoring()
         updatePetOpacity()
     }
 
@@ -417,6 +417,22 @@ private final class PetController: NSObject, NSWindowDelegate {
     var scale: CGFloat {
         get { Self.savedScale }
         set { applyScale(newValue, anchorOrigin: nil, animate: true) }
+    }
+
+    var restingOpacity: CGFloat {
+        get { Self.savedRestingOpacity }
+        set {
+            UserDefaults.standard.set(Double(min(max(newValue, 0), 1)), forKey: "restingOpacity")
+            updatePetOpacity()
+        }
+    }
+
+    var hoverOpacity: CGFloat {
+        get { Self.savedHoverOpacity }
+        set {
+            UserDefaults.standard.set(Double(min(max(newValue, 0), 1)), forKey: "hoverOpacity")
+            updatePetOpacity()
+        }
     }
 
     var shakeLevel: Int {
@@ -601,7 +617,7 @@ private final class PetController: NSObject, NSWindowDelegate {
         if savePosition { panel.saveFrame(usingName: "TypingPetWindow") }
     }
 
-    private func startMouseProximityMonitoring() {
+    private func startMouseHoverMonitoring() {
         let events: NSEvent.EventTypeMask = [
             .mouseMoved,
             .leftMouseDragged,
@@ -617,23 +633,17 @@ private final class PetController: NSObject, NSWindowDelegate {
         }
     }
 
-    private func updatePetOpacity(animated: Bool = true) {
+    private func updatePetOpacity() {
         guard panel.isVisible, let imageLayer = imageView.layer else { return }
-        let targetOpacity = PetProximityOpacity.opacity(
-            mouseLocation: NSEvent.mouseLocation,
-            petFrame: panel.frame
+        let targetOpacity = PetOpacityBehavior.opacity(
+            isHovering: panel.frame.contains(NSEvent.mouseLocation),
+            restingOpacity: restingOpacity,
+            hoverOpacity: hoverOpacity
         )
-        let currentOpacity = imageLayer.presentation()?.opacity ?? imageLayer.opacity
-        imageLayer.removeAnimation(forKey: "proximityOpacity")
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
         imageLayer.opacity = Float(targetOpacity)
-        guard animated, abs(CGFloat(currentOpacity) - targetOpacity) > 0.002 else { return }
-
-        let animation = CABasicAnimation(keyPath: "opacity")
-        animation.fromValue = currentOpacity
-        animation.toValue = targetOpacity
-        animation.duration = 0.22
-        animation.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
-        imageLayer.add(animation, forKey: "proximityOpacity")
+        CATransaction.commit()
     }
 
     private func continueResize(at mouseLocation: NSPoint) {
@@ -714,6 +724,20 @@ private final class PetController: NSObject, NSWindowDelegate {
     private static var savedScale: CGFloat {
         let value = UserDefaults.standard.double(forKey: "petScale")
         return value > 0 ? CGFloat(value) : 0.62
+    }
+
+    private static var savedRestingOpacity: CGFloat {
+        guard let value = UserDefaults.standard.object(forKey: "restingOpacity") as? Double else {
+            return 1
+        }
+        return min(max(CGFloat(value), 0), 1)
+    }
+
+    private static var savedHoverOpacity: CGFloat {
+        guard let value = UserDefaults.standard.object(forKey: "hoverOpacity") as? Double else {
+            return 0.3
+        }
+        return min(max(CGFloat(value), 0), 1)
     }
 
     private static var savedAlwaysOnTop: Bool {
@@ -1015,10 +1039,14 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
                 library: imageLibrary,
                 keyStore: keyReactionStore,
                 scale: petController.scale,
+                restingOpacity: petController.restingOpacity,
+                hoverOpacity: petController.hoverOpacity,
                 shakeLevel: petController.shakeLevel,
                 alwaysOnTop: petController.isAlwaysOnTop,
                 positionLocked: petController.isPositionLocked,
                 applyScale: { [weak self] in self?.petController.scale = $0 },
+                applyRestingOpacity: { [weak self] in self?.petController.restingOpacity = $0 },
+                applyHoverOpacity: { [weak self] in self?.petController.hoverOpacity = $0 },
                 applyShake: { [weak self] in self?.petController.shakeLevel = $0 },
                 applyAlwaysOnTop: { [weak self] in self?.petController.isAlwaysOnTop = $0 },
                 applyPositionLock: { [weak self] in self?.petController.isPositionLocked = $0 },

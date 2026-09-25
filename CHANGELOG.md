@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.7.0 - 2026-09-25
+
+- Replace distance-based fading with configurable resting and hover opacity settings.
+- Default to 100% resting opacity and 30% hover opacity.
+- Apply hover entry and exit opacity immediately without a transition.
+
 ## 0.6.0 - 2026-09-25
 
 - Fade the pet image smoothly based on pointer proximity, down to 30% opacity on hover.

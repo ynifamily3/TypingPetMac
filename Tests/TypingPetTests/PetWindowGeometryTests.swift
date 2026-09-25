@@ -2,41 +2,46 @@ import XCTest
 @testable import TypingPet
 
 final class PetWindowGeometryTests: XCTestCase {
-    func testProximityOpacityFadesSmoothlyTowardPet() {
-        let frame = CGRect(x: 100, y: 100, width: 200, height: 100)
-
+    func testOpacitySelectsRestingAndHoverValuesImmediately() {
         XCTAssertEqual(
-            PetProximityOpacity.opacity(
-                mouseLocation: CGPoint(x: 200, y: 150),
-                petFrame: frame
-            ),
-            0.3,
-            accuracy: 0.0001
-        )
-        XCTAssertEqual(
-            PetProximityOpacity.opacity(
-                mouseLocation: CGPoint(x: 440, y: 150),
-                petFrame: frame
+            PetOpacityBehavior.opacity(
+                isHovering: false,
+                restingOpacity: 1,
+                hoverOpacity: 0.3
             ),
             1,
             accuracy: 0.0001
         )
         XCTAssertEqual(
-            PetProximityOpacity.opacity(
-                mouseLocation: CGPoint(x: 370, y: 150),
-                petFrame: frame
+            PetOpacityBehavior.opacity(
+                isHovering: true,
+                restingOpacity: 1,
+                hoverOpacity: 0.3
             ),
-            0.65,
+            0.3,
             accuracy: 0.0001
         )
     }
 
-    func testProximityDistanceUsesNearestCorner() {
-        let distance = PetProximityOpacity.distance(
-            from: CGPoint(x: 30, y: 40),
-            to: CGRect(x: 0, y: 0, width: 10, height: 10)
+    func testOpacityValuesAreClampedToValidRange() {
+        XCTAssertEqual(
+            PetOpacityBehavior.opacity(
+                isHovering: false,
+                restingOpacity: 1.4,
+                hoverOpacity: 0.3
+            ),
+            1,
+            accuracy: 0.0001
         )
-        XCTAssertEqual(distance, hypot(20, 30), accuracy: 0.0001)
+        XCTAssertEqual(
+            PetOpacityBehavior.opacity(
+                isHovering: true,
+                restingOpacity: 1,
+                hoverOpacity: -0.2
+            ),
+            0,
+            accuracy: 0.0001
+        )
     }
 
     func testReleaseVelocityUsesRecentPointerMovement() {

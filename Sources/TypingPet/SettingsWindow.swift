@@ -10,6 +10,8 @@ final class TypingPetSettingsModel: ObservableObject {
     @Published private(set) var activeSetID: UUID
     @Published private(set) var rules: [KeyReactionRule] = []
     @Published private(set) var scale: Double
+    @Published private(set) var restingOpacity: Double
+    @Published private(set) var hoverOpacity: Double
     @Published private(set) var shakeLevel: Int
     @Published private(set) var alwaysOnTop: Bool
     @Published private(set) var positionLocked: Bool
@@ -19,6 +21,8 @@ final class TypingPetSettingsModel: ObservableObject {
     let library: PetImageLibrary
     let keyStore: KeyReactionStore
     private let applyScale: (CGFloat) -> Void
+    private let applyRestingOpacity: (CGFloat) -> Void
+    private let applyHoverOpacity: (CGFloat) -> Void
     private let applyShake: (Int) -> Void
     private let applyAlwaysOnTop: (Bool) -> Void
     private let applyPositionLock: (Bool) -> Void
@@ -28,10 +32,14 @@ final class TypingPetSettingsModel: ObservableObject {
         library: PetImageLibrary,
         keyStore: KeyReactionStore,
         scale: CGFloat,
+        restingOpacity: CGFloat,
+        hoverOpacity: CGFloat,
         shakeLevel: Int,
         alwaysOnTop: Bool,
         positionLocked: Bool,
         applyScale: @escaping (CGFloat) -> Void,
+        applyRestingOpacity: @escaping (CGFloat) -> Void,
+        applyHoverOpacity: @escaping (CGFloat) -> Void,
         applyShake: @escaping (Int) -> Void,
         applyAlwaysOnTop: @escaping (Bool) -> Void,
         applyPositionLock: @escaping (Bool) -> Void,
@@ -40,10 +48,14 @@ final class TypingPetSettingsModel: ObservableObject {
         self.library = library
         self.keyStore = keyStore
         self.scale = Double(scale)
+        self.restingOpacity = Double(restingOpacity)
+        self.hoverOpacity = Double(hoverOpacity)
         self.shakeLevel = shakeLevel
         self.alwaysOnTop = alwaysOnTop
         self.positionLocked = positionLocked
         self.applyScale = applyScale
+        self.applyRestingOpacity = applyRestingOpacity
+        self.applyHoverOpacity = applyHoverOpacity
         self.applyShake = applyShake
         self.applyAlwaysOnTop = applyAlwaysOnTop
         self.applyPositionLock = applyPositionLock
@@ -79,6 +91,16 @@ final class TypingPetSettingsModel: ObservableObject {
 
     func syncScale(_ value: CGFloat) {
         scale = Double(value)
+    }
+
+    func setRestingOpacity(_ value: Double) {
+        restingOpacity = value
+        applyRestingOpacity(CGFloat(value))
+    }
+
+    func setHoverOpacity(_ value: Double) {
+        hoverOpacity = value
+        applyHoverOpacity(CGFloat(value))
     }
 
     func setShakeLevel(_ value: Int) {
@@ -243,6 +265,19 @@ private struct GeneralSettingsView: View {
                     Slider(value: Binding(get: { model.scale }, set: model.setScale), in: 0.35...1.25)
                     Text("\(Int(model.scale * 100))%").monospacedDigit().frame(width: 48)
                 }
+                HStack {
+                    Text("상시 투명도")
+                    Slider(value: Binding(get: { model.restingOpacity }, set: model.setRestingOpacity), in: 0...1)
+                    Text("\(Int(model.restingOpacity * 100))%").monospacedDigit().frame(width: 48)
+                }
+                HStack {
+                    Text("호버 시 투명도")
+                    Slider(value: Binding(get: { model.hoverOpacity }, set: model.setHoverOpacity), in: 0...1)
+                    Text("\(Int(model.hoverOpacity * 100))%").monospacedDigit().frame(width: 48)
+                }
+                Text("100%는 선명하게, 0%는 완전히 투명하게 표시됩니다.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
                 Picker("통통 튀는 정도", selection: Binding(get: { model.shakeLevel }, set: model.setShakeLevel)) {
                     Text("끔").tag(0); Text("약하게").tag(1); Text("보통").tag(2); Text("강하게").tag(3)
                 }
