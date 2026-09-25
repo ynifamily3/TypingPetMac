@@ -15,6 +15,7 @@ final class TypingPetSettingsModel: ObservableObject {
     @Published private(set) var shakeLevel: Int
     @Published private(set) var alwaysOnTop: Bool
     @Published private(set) var positionLocked: Bool
+    @Published private(set) var avoidsPointerWhenLocked: Bool
     @Published private(set) var launchAtLogin: Bool
     @Published var errorMessage: String?
 
@@ -26,6 +27,7 @@ final class TypingPetSettingsModel: ObservableObject {
     private let applyShake: (Int) -> Void
     private let applyAlwaysOnTop: (Bool) -> Void
     private let applyPositionLock: (Bool) -> Void
+    private let applyPointerAvoidance: (Bool) -> Void
     private let reloadPet: () -> Void
 
     init(
@@ -37,12 +39,14 @@ final class TypingPetSettingsModel: ObservableObject {
         shakeLevel: Int,
         alwaysOnTop: Bool,
         positionLocked: Bool,
+        avoidsPointerWhenLocked: Bool,
         applyScale: @escaping (CGFloat) -> Void,
         applyRestingOpacity: @escaping (CGFloat) -> Void,
         applyHoverOpacity: @escaping (CGFloat) -> Void,
         applyShake: @escaping (Int) -> Void,
         applyAlwaysOnTop: @escaping (Bool) -> Void,
         applyPositionLock: @escaping (Bool) -> Void,
+        applyPointerAvoidance: @escaping (Bool) -> Void,
         reloadPet: @escaping () -> Void
     ) {
         self.library = library
@@ -53,12 +57,14 @@ final class TypingPetSettingsModel: ObservableObject {
         self.shakeLevel = shakeLevel
         self.alwaysOnTop = alwaysOnTop
         self.positionLocked = positionLocked
+        self.avoidsPointerWhenLocked = avoidsPointerWhenLocked
         self.applyScale = applyScale
         self.applyRestingOpacity = applyRestingOpacity
         self.applyHoverOpacity = applyHoverOpacity
         self.applyShake = applyShake
         self.applyAlwaysOnTop = applyAlwaysOnTop
         self.applyPositionLock = applyPositionLock
+        self.applyPointerAvoidance = applyPointerAvoidance
         self.reloadPet = reloadPet
         activeSetID = library.activeSetID
         selectedSetID = library.activeSetID
@@ -116,6 +122,11 @@ final class TypingPetSettingsModel: ObservableObject {
     func setPositionLocked(_ value: Bool) {
         positionLocked = value
         applyPositionLock(value)
+    }
+
+    func setPointerAvoidance(_ value: Bool) {
+        avoidsPointerWhenLocked = value
+        applyPointerAvoidance(value)
     }
 
     func toggleLaunchAtLogin(_ value: Bool) {
@@ -283,6 +294,14 @@ private struct GeneralSettingsView: View {
                 }
                 Toggle("항상 다른 창 위에 표시", isOn: Binding(get: { model.alwaysOnTop }, set: model.setAlwaysOnTop))
                 Toggle("위치 잠금 (클릭 통과)", isOn: Binding(get: { model.positionLocked }, set: model.setPositionLocked))
+                Toggle(
+                    "위치 잠금 중 마우스 피하기",
+                    isOn: Binding(get: { model.avoidsPointerWhenLocked }, set: model.setPointerAvoidance)
+                )
+                .disabled(!model.positionLocked)
+                Text("커서가 가까워지면 펫이 화면 안에서 부드럽게 자리를 비킵니다.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
             Section("시스템") {
                 Toggle("로그인 시 자동 실행", isOn: Binding(get: { model.launchAtLogin }, set: model.toggleLaunchAtLogin))

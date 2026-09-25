@@ -2,6 +2,48 @@ import XCTest
 @testable import TypingPet
 
 final class PetWindowGeometryTests: XCTestCase {
+    func testPointerAvoidanceMovesAwayFromNearbyPointer() {
+        let frame = CGRect(x: 100, y: 100, width: 100, height: 100)
+        let mouse = CGPoint(x: 80, y: 150)
+        let target = PetPointerAvoidance.targetOrigin(
+            mouseLocation: mouse,
+            petFrame: frame,
+            bounds: CGRect(x: 0, y: 0, width: 500, height: 500)
+        )
+
+        XCTAssertNotNil(target)
+        XCTAssertGreaterThan(target!.x, frame.origin.x)
+        XCTAssertGreaterThan(
+            PetPointerAvoidance.distance(from: mouse, to: CGRect(origin: target!, size: frame.size)),
+            PetPointerAvoidance.distance(from: mouse, to: frame)
+        )
+    }
+
+    func testPointerAvoidanceDoesNothingWhenPointerIsFarAway() {
+        XCTAssertNil(PetPointerAvoidance.targetOrigin(
+            mouseLocation: CGPoint(x: 0, y: 0),
+            petFrame: CGRect(x: 300, y: 300, width: 100, height: 100),
+            bounds: CGRect(x: 0, y: 0, width: 500, height: 500)
+        ))
+    }
+
+    func testPointerAvoidanceChoosesAnAvailableDirectionAtScreenEdge() {
+        let bounds = CGRect(x: 0, y: 0, width: 500, height: 500)
+        let frame = CGRect(x: 0, y: 180, width: 100, height: 100)
+        let target = PetPointerAvoidance.targetOrigin(
+            mouseLocation: CGPoint(x: 60, y: 230),
+            petFrame: frame,
+            bounds: bounds
+        )
+
+        XCTAssertNotNil(target)
+        XCTAssertNotEqual(target!, frame.origin)
+        XCTAssertGreaterThanOrEqual(target!.x, bounds.minX)
+        XCTAssertGreaterThanOrEqual(target!.y, bounds.minY)
+        XCTAssertLessThanOrEqual(target!.x + frame.width, bounds.maxX)
+        XCTAssertLessThanOrEqual(target!.y + frame.height, bounds.maxY)
+    }
+
     func testOpacitySelectsRestingAndHoverValuesImmediately() {
         XCTAssertEqual(
             PetOpacityBehavior.opacity(

@@ -328,6 +328,10 @@ private final class PetController: NSObject, NSWindowDelegate {
     private var inertiaVelocity: CGVector = .zero
     private var inertiaLastTimestamp: TimeInterval?
     private var inertiaBounds: NSRect?
+    private var avoidanceTimer: Timer?
+    private var avoidanceVelocity: CGVector = .zero
+    private var avoidanceLastTimestamp: TimeInterval?
+    private var avoidanceBounds: NSRect?
     private var globalMouseMonitor: Any?
     private var localMouseMonitor: Any?
 
@@ -392,6 +396,7 @@ private final class PetController: NSObject, NSWindowDelegate {
         panel.orderFrontRegardless()
         startMouseHoverMonitoring()
         updatePetOpacity()
+        updatePointerAvoidance()
     }
 
     var isAlwaysOnTop: Bool {
@@ -409,6 +414,11 @@ private final class PetController: NSObject, NSWindowDelegate {
             panel.ignoresMouseEvents = newValue
             contentView.controlsEnabled = !newValue
             UserDefaults.standard.set(newValue, forKey: "positionLocked")
+            if newValue {
+                updatePointerAvoidance()
+            } else {
+                stopPointerAvoidance(savePosition: true)
+            }
         }
     }
 
@@ -432,6 +442,18 @@ private final class PetController: NSObject, NSWindowDelegate {
         set {
             UserDefaults.standard.set(Double(min(max(newValue, 0), 1)), forKey: "hoverOpacity")
             updatePetOpacity()
+        }
+    }
+
+    var avoidsPointerWhenLocked: Bool {
+        get { Self.savedAvoidsPointerWhenLocked }
+        set {
+            UserDefaults.standard.set(newValue, forKey: "avoidsPointerWhenLocked")
+            if newValue {
+                updatePointerAvoidance()
+            } else {
+                stopPointerAvoidance(savePosition: true)
+            }
         }
     }
 
@@ -478,6 +500,7 @@ private final class PetController: NSObject, NSWindowDelegate {
 
     func hidePet() {
         stopInertia(savePosition: true)
+        stopPointerAvoidance(savePosition: true)
         contentView.hideControls()
         panel.orderOut(nil)
     }
@@ -486,6 +509,7 @@ private final class PetController: NSObject, NSWindowDelegate {
         contentView.hideControls()
         panel.orderFrontRegardless()
         updatePetOpacity()
+        updatePointerAvoidance()
     }
 
     func togglePetVisibility() {
@@ -494,6 +518,7 @@ private final class PetController: NSObject, NSWindowDelegate {
 
     func resetPosition() {
         stopInertia(savePosition: false)
+        stopPointerAvoidance(savePosition: false)
         guard let screen = NSScreen.main else { return }
         let size = panel.frame.size
         let visible = screen.visibleFrame
@@ -625,12 +650,17 @@ private final class PetController: NSObject, NSWindowDelegate {
             .otherMouseDragged,
         ]
         globalMouseMonitor = NSEvent.addGlobalMonitorForEvents(matching: events) { [weak self] _ in
-            MainActor.assumeIsolated { self?.updatePetOpacity() }
+            MainActor.assumeIsolated { self?.handlePointerMotion() }
         }
         localMouseMonitor = NSEvent.addLocalMonitorForEvents(matching: events) { [weak self] event in
-            MainActor.assumeIsolated { self?.updatePetOpacity() }
+            MainActor.assumeIsolated { self?.handlePointerMotion() }
             return event
         }
+    }
+
+    private func handlePointerMotion() {
+        updatePetOpacity()
+        updatePointerAvoidance()
     }
 
     private func updatePetOpacity() {
@@ -644,6 +674,87 @@ private final class PetController: NSObject, NSWindowDelegate {
         CATransaction.setDisableActions(true)
         imageLayer.opacity = Float(targetOpacity)
         CATransaction.commit()
+    }
+
+    private func updatePointerAvoidance() {
+        guard panel.isVisible, isPositionLocked, avoidsPointerWhenLocked else { return }
+        let bounds = avoidanceBounds ?? (panel.screen ?? NSScreen.main)?.visibleFrame ?? panel.frame
+        guard PetPointerAvoidance.targetOrigin(
+            mouseLocation: NSEvent.mouseLocation,
+            petFrame: panel.frame,
+            bounds: bounds
+        ) != nil else { return }
+        startPointerAvoidance(in: bounds)
+    }
+
+    private func startPointerAvoidance(in bounds: NSRect) {
+        guard avoidanceTimer == nil else { return }
+        avoidanceBounds = bounds
+        avoidanceLastTimestamp = ProcessInfo.processInfo.systemUptime
+        let timer = Timer(timeInterval: 1.0 / 60.0, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.advancePointerAvoidance() }
+        }
+        avoidanceTimer = timer
+        RunLoop.main.add(timer, forMode: .common)
+    }
+
+    private func advancePointerAvoidance() {
+        guard panel.isVisible, isPositionLocked, avoidsPointerWhenLocked,
+              let lastTimestamp = avoidanceLastTimestamp else {
+            stopPointerAvoidance(savePosition: true)
+            return
+        }
+        let now = ProcessInfo.processInfo.systemUptime
+        let elapsed = CGFloat(min(max(now - lastTimestamp, 1.0 / 240.0), 1.0 / 30.0))
+        avoidanceLastTimestamp = now
+        let bounds = avoidanceBounds ?? panel.frame
+        let origin = panel.frame.origin
+        let target = PetPointerAvoidance.targetOrigin(
+            mouseLocation: NSEvent.mouseLocation,
+            petFrame: panel.frame,
+            bounds: bounds
+        )
+        let delta = CGVector(
+            dx: (target?.x ?? origin.x) - origin.x,
+            dy: (target?.y ?? origin.y) - origin.y
+        )
+        let stiffness: CGFloat = target == nil ? 0 : 58
+        let damping: CGFloat = target == nil ? 16 : 13
+        avoidanceVelocity.dx += (delta.dx * stiffness - avoidanceVelocity.dx * damping) * elapsed
+        avoidanceVelocity.dy += (delta.dy * stiffness - avoidanceVelocity.dy * damping) * elapsed
+
+        let speed = hypot(avoidanceVelocity.dx, avoidanceVelocity.dy)
+        if speed > 520 {
+            let factor = 520 / speed
+            avoidanceVelocity.dx *= factor
+            avoidanceVelocity.dy *= factor
+        }
+        let proposedOrigin = CGPoint(
+            x: origin.x + avoidanceVelocity.dx * elapsed,
+            y: origin.y + avoidanceVelocity.dy * elapsed
+        )
+        let nextOrigin = PetPointerAvoidance.clampedOrigin(
+            proposedOrigin,
+            size: panel.frame.size,
+            bounds: bounds
+        )
+        if nextOrigin.x != proposedOrigin.x { avoidanceVelocity.dx = 0 }
+        if nextOrigin.y != proposedOrigin.y { avoidanceVelocity.dy = 0 }
+        panel.setFrameOrigin(nextOrigin)
+        updatePetOpacity()
+
+        if target == nil, hypot(avoidanceVelocity.dx, avoidanceVelocity.dy) < 5 {
+            stopPointerAvoidance(savePosition: true)
+        }
+    }
+
+    private func stopPointerAvoidance(savePosition: Bool) {
+        avoidanceTimer?.invalidate()
+        avoidanceTimer = nil
+        avoidanceVelocity = .zero
+        avoidanceLastTimestamp = nil
+        avoidanceBounds = nil
+        if savePosition { panel.saveFrame(usingName: "TypingPetWindow") }
     }
 
     private func continueResize(at mouseLocation: NSPoint) {
@@ -738,6 +849,10 @@ private final class PetController: NSObject, NSWindowDelegate {
             return 0.3
         }
         return min(max(CGFloat(value), 0), 1)
+    }
+
+    private static var savedAvoidsPointerWhenLocked: Bool {
+        UserDefaults.standard.bool(forKey: "avoidsPointerWhenLocked")
     }
 
     private static var savedAlwaysOnTop: Bool {
@@ -1044,12 +1159,14 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
                 shakeLevel: petController.shakeLevel,
                 alwaysOnTop: petController.isAlwaysOnTop,
                 positionLocked: petController.isPositionLocked,
+                avoidsPointerWhenLocked: petController.avoidsPointerWhenLocked,
                 applyScale: { [weak self] in self?.petController.scale = $0 },
                 applyRestingOpacity: { [weak self] in self?.petController.restingOpacity = $0 },
                 applyHoverOpacity: { [weak self] in self?.petController.hoverOpacity = $0 },
                 applyShake: { [weak self] in self?.petController.shakeLevel = $0 },
                 applyAlwaysOnTop: { [weak self] in self?.petController.isAlwaysOnTop = $0 },
                 applyPositionLock: { [weak self] in self?.petController.isPositionLocked = $0 },
+                applyPointerAvoidance: { [weak self] in self?.petController.avoidsPointerWhenLocked = $0 },
                 reloadPet: { [weak self] in self?.petController.reloadImages() }
             )
         }

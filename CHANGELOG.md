@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.8.0 - 2026-09-25
+
+- Add an optional pointer-avoidance mode for click-through position lock.
+- Move away with damped spring motion while remaining inside the current display.
+- Choose an alternate escape direction when the nearest screen edge blocks movement.
+
 ## 0.7.0 - 2026-09-25
 
 - Replace distance-based fading with configurable resting and hover opacity settings.
