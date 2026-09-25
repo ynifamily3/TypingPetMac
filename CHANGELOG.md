@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.9.1 - 2026-09-25
+
+- Show the native diagonal frame-resize cursor over the pet's resize handle.
+- Add a drag-to-resize tooltip and accessibility help to make the control easier to discover.
+
 ## 0.9.0 - 2026-09-25
 
 - Standardize settings spacing on a 4-point grid across all tabs.

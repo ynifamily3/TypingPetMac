@@ -21,6 +21,14 @@ private final class PetResizeHandleView: NSView {
 
     private let imageView: NSImageView
     private(set) var isDragging = false
+    private var cursorTrackingArea: NSTrackingArea?
+
+    private static var resizeCursor: NSCursor {
+        if #available(macOS 15.0, *) {
+            return .frameResize(position: .topRight, directions: .all)
+        }
+        return .resizeLeftRight
+    }
 
     override var mouseDownCanMoveWindow: Bool { false }
 
@@ -39,7 +47,9 @@ private final class PetResizeHandleView: NSView {
         imageView.contentTintColor = .white
         imageView.imageScaling = .scaleProportionallyDown
         addSubview(imageView)
+        toolTip = "드래그하여 크기 조절"
         setAccessibilityLabel("펫 크기 조절")
+        setAccessibilityHelp("드래그하여 펫 크기를 조절합니다.")
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
@@ -48,24 +58,55 @@ private final class PetResizeHandleView: NSView {
         super.layout()
         layer?.cornerRadius = bounds.width / 2
         imageView.frame = bounds.insetBy(dx: 9, dy: 9)
+        window?.invalidateCursorRects(for: self)
+    }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let cursorTrackingArea { removeTrackingArea(cursorTrackingArea) }
+        let area = NSTrackingArea(
+            rect: bounds,
+            options: [.activeAlways, .inVisibleRect, .mouseEnteredAndExited, .cursorUpdate],
+            owner: self,
+            userInfo: nil
+        )
+        addTrackingArea(area)
+        cursorTrackingArea = area
+    }
+
+    override func mouseEntered(with event: NSEvent) {
+        Self.resizeCursor.set()
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        if !isDragging { NSCursor.arrow.set() }
+    }
+
+    override func cursorUpdate(with event: NSEvent) {
+        Self.resizeCursor.set()
     }
 
     override func mouseDown(with event: NSEvent) {
         isDragging = true
+        Self.resizeCursor.set()
         onResizeBegan?(screenLocation(for: event))
     }
 
     override func mouseDragged(with event: NSEvent) {
+        Self.resizeCursor.set()
         onResizeDragged?(screenLocation(for: event))
     }
 
     override func mouseUp(with event: NSEvent) {
         isDragging = false
+        let localPoint = convert(event.locationInWindow, from: nil)
+        (bounds.contains(localPoint) ? Self.resizeCursor : NSCursor.arrow).set()
         onResizeEnded?()
     }
 
     override func resetCursorRects() {
-        addCursorRect(bounds, cursor: .crosshair)
+        super.resetCursorRects()
+        addCursorRect(bounds, cursor: Self.resizeCursor)
     }
 
     private func screenLocation(for event: NSEvent) -> NSPoint {
@@ -238,6 +279,7 @@ private final class PetContentView: NSView {
         if visible {
             closeButton.isHidden = false
             resizeHandle.isHidden = false
+            window?.invalidateCursorRects(for: resizeHandle)
         }
 
         let changes = { [weak self] in
