@@ -25,6 +25,17 @@ enum TypingPetAppLocation: Equatable {
     }
 }
 
+@MainActor
+enum InputMonitoringSettings {
+    static let url = URL(
+        string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent"
+    )!
+
+    static func open() {
+        NSWorkspace.shared.open(url)
+    }
+}
+
 enum InputMonitoringGuidePlacement {
     static func appKitFrame(fromQuartzFrame frame: CGRect, primaryScreenMaxY: CGFloat) -> CGRect {
         CGRect(
@@ -164,7 +175,7 @@ final class InputMonitoringGuideController: NSObject, NSWindowDelegate {
             appURL: appURL,
             location: location,
             panelHeight: panelHeight,
-            revealInFinder: { [weak self] in self?.revealInFinder() },
+            openSettings: { InputMonitoringSettings.open() },
             checkPermission: { [weak self] in self?.refreshPermission() },
             close: { [weak self] in self?.hide() }
         )
@@ -263,13 +274,6 @@ final class InputMonitoringGuideController: NSObject, NSWindowDelegate {
         windowTrackingTimer = nil
     }
 
-    private func revealInFinder() {
-        if location == .translocated {
-            NSWorkspace.shared.open(URL(fileURLWithPath: "/Applications", isDirectory: true))
-        } else {
-            NSWorkspace.shared.activateFileViewerSelecting([appURL])
-        }
-    }
 }
 
 private extension CGRect {
@@ -288,7 +292,7 @@ private struct InputMonitoringGuideView: View {
     let appURL: URL
     let location: TypingPetAppLocation
     let panelHeight: CGFloat
-    let revealInFinder: () -> Void
+    let openSettings: () -> Void
     let checkPermission: () -> Void
     let close: () -> Void
 
@@ -356,9 +360,9 @@ private struct InputMonitoringGuideView: View {
 
                 Spacer()
 
-                Button(revealButtonTitle, action: revealInFinder)
-                Button("다시 확인", action: checkPermission)
+                Button("설정 창 열기", action: openSettings)
                     .buttonStyle(.borderedProminent)
+                Button("다시 확인", action: checkPermission)
                 Button("나중에", action: close)
             }
         }
@@ -377,10 +381,6 @@ private struct InputMonitoringGuideView: View {
         case .translocated:
             return "현재 앱이 임시 보안 위치에서 실행 중입니다. Applications 폴더로 옮겨 다시 실행한 뒤 추가해 주세요."
         }
-    }
-
-    private var revealButtonTitle: String {
-        location == .translocated ? "Applications 열기" : "Finder에서 보기"
     }
 }
 

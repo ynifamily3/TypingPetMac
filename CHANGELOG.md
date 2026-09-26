@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.11.2 - 2026-09-27
+
+- Replace the permission guide's Finder shortcut with a prominent button that reopens Input Monitoring settings.
+- Share the same Input Monitoring deep link between the menu, settings window, and floating guide.
+
 ## 0.11.1 - 2026-09-27
 
 - Keep the Input Monitoring guide above normal application windows.

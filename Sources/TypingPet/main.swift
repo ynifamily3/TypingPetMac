@@ -1211,10 +1211,7 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
     }
 
     @objc private func openInputMonitoringSettings() {
-        let address = "x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent"
-        if let url = URL(string: address) {
-            NSWorkspace.shared.open(url)
-        }
+        InputMonitoringSettings.open()
         guard !CGPreflightListenEventAccess() else { return }
 
         if inputMonitoringGuideController == nil {
