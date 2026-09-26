@@ -2,6 +2,40 @@ import XCTest
 @testable import TypingPet
 
 final class PetWindowGeometryTests: XCTestCase {
+    func testDetectsApplicationsFolderLocationsForPermissionGuide() {
+        XCTAssertEqual(
+            TypingPetAppLocation.detect(
+                appURL: URL(fileURLWithPath: "/Applications/TypingPet.app"),
+                homeDirectory: URL(fileURLWithPath: "/Users/test")
+            ),
+            .applications
+        )
+        XCTAssertEqual(
+            TypingPetAppLocation.detect(
+                appURL: URL(fileURLWithPath: "/Users/test/Applications/TypingPet.app"),
+                homeDirectory: URL(fileURLWithPath: "/Users/test")
+            ),
+            .applications
+        )
+    }
+
+    func testDetectsUnsafePermissionGuideLocations() {
+        XCTAssertEqual(
+            TypingPetAppLocation.detect(
+                appURL: URL(fileURLWithPath: "/Users/test/Downloads/TypingPet.app"),
+                homeDirectory: URL(fileURLWithPath: "/Users/test")
+            ),
+            .outsideApplications
+        )
+        XCTAssertEqual(
+            TypingPetAppLocation.detect(
+                appURL: URL(fileURLWithPath: "/private/var/folders/AppTranslocation/TypingPet.app"),
+                homeDirectory: URL(fileURLWithPath: "/Users/test")
+            ),
+            .translocated
+        )
+    }
+
     func testPointerAvoidanceMovesAwayFromNearbyPointer() {
         let frame = CGRect(x: 100, y: 100, width: 100, height: 100)
         let mouse = CGPoint(x: 80, y: 150)

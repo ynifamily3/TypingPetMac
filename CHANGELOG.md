@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.11.0 - 2026-09-27
+
+- Add a floating guide for granting Input Monitoring permission.
+- Make the real TypingPet.app icon draggable into the system permission list.
+- Detect permission changes automatically and dismiss the guide after access is granted.
+- Warn when the app is outside Applications and provide Finder and manual-picker fallbacks.
+
 ## 0.10.0 - 2026-09-27
 
 - Simplify the menu bar menu to the essential pet, position, permission, login, and quit actions.

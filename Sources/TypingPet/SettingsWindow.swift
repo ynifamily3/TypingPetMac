@@ -29,6 +29,7 @@ final class TypingPetSettingsModel: ObservableObject {
     private let applyPositionLock: (Bool) -> Void
     private let applyPointerAvoidance: (Bool) -> Void
     private let reloadPet: () -> Void
+    private let openInputMonitoringSettingsAction: () -> Void
 
     init(
         library: PetImageLibrary,
@@ -47,7 +48,8 @@ final class TypingPetSettingsModel: ObservableObject {
         applyAlwaysOnTop: @escaping (Bool) -> Void,
         applyPositionLock: @escaping (Bool) -> Void,
         applyPointerAvoidance: @escaping (Bool) -> Void,
-        reloadPet: @escaping () -> Void
+        reloadPet: @escaping () -> Void,
+        openInputMonitoringSettings: @escaping () -> Void
     ) {
         self.library = library
         self.keyStore = keyStore
@@ -66,6 +68,7 @@ final class TypingPetSettingsModel: ObservableObject {
         self.applyPositionLock = applyPositionLock
         self.applyPointerAvoidance = applyPointerAvoidance
         self.reloadPet = reloadPet
+        openInputMonitoringSettingsAction = openInputMonitoringSettings
         activeSetID = library.activeSetID
         selectedSetID = library.activeSetID
         launchAtLogin = SMAppService.mainApp.status == .enabled
@@ -209,9 +212,7 @@ final class TypingPetSettingsModel: ObservableObject {
     }
 
     func openInputMonitoringSettings() {
-        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent") {
-            NSWorkspace.shared.open(url)
-        }
+        openInputMonitoringSettingsAction()
     }
 }
 

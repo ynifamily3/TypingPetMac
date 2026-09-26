@@ -1006,6 +1006,7 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
     private var didShowPermissionAlert = false
     private var settingsWindowController: SettingsWindowController?
     private var settingsModel: TypingPetSettingsModel?
+    private var inputMonitoringGuideController: InputMonitoringGuideController?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         petController = PetController(
@@ -1198,7 +1199,8 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
                 applyAlwaysOnTop: { [weak self] in self?.petController.isAlwaysOnTop = $0 },
                 applyPositionLock: { [weak self] in self?.petController.isPositionLocked = $0 },
                 applyPointerAvoidance: { [weak self] in self?.petController.avoidsPointerWhenLocked = $0 },
-                reloadPet: { [weak self] in self?.petController.reloadImages() }
+                reloadPet: { [weak self] in self?.petController.reloadImages() },
+                openInputMonitoringSettings: { [weak self] in self?.openInputMonitoringSettings() }
             )
         }
         settingsModel?.refresh()
@@ -1213,6 +1215,15 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
         if let url = URL(string: address) {
             NSWorkspace.shared.open(url)
         }
+        guard !CGPreflightListenEventAccess() else { return }
+
+        if inputMonitoringGuideController == nil {
+            inputMonitoringGuideController = InputMonitoringGuideController { [weak self] in
+                self?.retryMonitoringIfAuthorized()
+                self?.settingsModel?.refresh()
+            }
+        }
+        inputMonitoringGuideController?.show()
     }
 
     @objc private func toggleLaunchAtLogin() {
