@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.11.1 - 2026-09-27
+
+- Keep the Input Monitoring guide above normal application windows.
+- Follow the open System Settings window without requesting Accessibility permission.
+- Prefer placement beside System Settings and stay inside the visible screen when space is limited.
+
 ## 0.11.0 - 2026-09-27
 
 - Add a floating guide for granting Input Monitoring permission.

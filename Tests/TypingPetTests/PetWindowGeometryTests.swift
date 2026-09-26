@@ -2,6 +2,45 @@ import XCTest
 @testable import TypingPet
 
 final class PetWindowGeometryTests: XCTestCase {
+    func testInputMonitoringGuideConvertsQuartzWindowCoordinates() {
+        let frame = InputMonitoringGuidePlacement.appKitFrame(
+            fromQuartzFrame: CGRect(x: 120, y: 180, width: 740, height: 522),
+            primaryScreenMaxY: 1_440
+        )
+
+        XCTAssertEqual(frame, CGRect(x: 120, y: 738, width: 740, height: 522))
+    }
+
+    func testInputMonitoringGuidePrefersRightSideOfSettingsWindow() {
+        let origin = InputMonitoringGuidePlacement.origin(
+            panelSize: CGSize(width: 404, height: 336),
+            beside: CGRect(x: 400, y: 300, width: 740, height: 522),
+            in: CGRect(x: 0, y: 40, width: 1_800, height: 1_060)
+        )
+
+        XCTAssertEqual(origin, CGPoint(x: 1_152, y: 486))
+    }
+
+    func testInputMonitoringGuideUsesLeftSideWhenRightSideIsTooNarrow() {
+        let origin = InputMonitoringGuidePlacement.origin(
+            panelSize: CGSize(width: 404, height: 336),
+            beside: CGRect(x: 1_458, y: 766, width: 740, height: 522),
+            in: CGRect(x: 0, y: 87, width: 2_560, height: 1_323)
+        )
+
+        XCTAssertEqual(origin, CGPoint(x: 1_042, y: 952))
+    }
+
+    func testInputMonitoringGuideStaysInsideVisibleFrameWhenBothSidesAreNarrow() {
+        let origin = InputMonitoringGuidePlacement.origin(
+            panelSize: CGSize(width: 404, height: 336),
+            beside: CGRect(x: 260, y: 220, width: 920, height: 650),
+            in: CGRect(x: 0, y: 40, width: 1_440, height: 860)
+        )
+
+        XCTAssertEqual(origin, CGPoint(x: 1_024, y: 534))
+    }
+
     func testDetectsApplicationsFolderLocationsForPermissionGuide() {
         XCTAssertEqual(
             TypingPetAppLocation.detect(

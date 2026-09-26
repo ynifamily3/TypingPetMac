@@ -25,6 +25,83 @@ enum TypingPetAppLocation: Equatable {
     }
 }
 
+enum InputMonitoringGuidePlacement {
+    static func appKitFrame(fromQuartzFrame frame: CGRect, primaryScreenMaxY: CGFloat) -> CGRect {
+        CGRect(
+            x: frame.minX,
+            y: primaryScreenMaxY - frame.maxY,
+            width: frame.width,
+            height: frame.height
+        )
+    }
+
+    static func origin(
+        panelSize: CGSize,
+        beside targetFrame: CGRect,
+        in visibleFrame: CGRect,
+        gap: CGFloat = 12,
+        margin: CGFloat = 12
+    ) -> CGPoint {
+        let minimumX = visibleFrame.minX + margin
+        let maximumX = visibleFrame.maxX - panelSize.width - margin
+        let minimumY = visibleFrame.minY + margin
+        let maximumY = visibleFrame.maxY - panelSize.height - margin
+        let rightX = targetFrame.maxX + gap
+        let leftX = targetFrame.minX - gap - panelSize.width
+
+        let x: CGFloat
+        if rightX <= maximumX {
+            x = rightX
+        } else if leftX >= minimumX {
+            x = leftX
+        } else {
+            let rightSpace = visibleFrame.maxX - targetFrame.maxX
+            let leftSpace = targetFrame.minX - visibleFrame.minX
+            x = min(max(rightSpace >= leftSpace ? rightX : leftX, minimumX), maximumX)
+        }
+
+        let topAlignedY = targetFrame.maxY - panelSize.height
+        let y = min(max(topAlignedY, minimumY), maximumY)
+        return CGPoint(x: x, y: y)
+    }
+}
+
+private enum SystemSettingsWindowLocator {
+    private static let bundleIdentifiers = [
+        "com.apple.systempreferences",
+        "com.apple.SystemSettings"
+    ]
+
+    static func frame(primaryScreenMaxY: CGFloat) -> CGRect? {
+        let processIdentifiers = Set(bundleIdentifiers.flatMap { identifier in
+            NSRunningApplication.runningApplications(withBundleIdentifier: identifier)
+                .map(\.processIdentifier)
+        })
+        guard !processIdentifiers.isEmpty,
+              let windowInfo = CGWindowListCopyWindowInfo(
+                [.optionOnScreenOnly, .excludeDesktopElements],
+                kCGNullWindowID
+              ) as? [[String: Any]] else { return nil }
+
+        for window in windowInfo {
+            guard let processIdentifier = window[kCGWindowOwnerPID as String] as? pid_t,
+                  processIdentifiers.contains(processIdentifier),
+                  (window[kCGWindowLayer as String] as? Int ?? 0) == 0,
+                  let bounds = window[kCGWindowBounds as String] as? NSDictionary else { continue }
+
+            var quartzFrame = CGRect.zero
+            guard CGRectMakeWithDictionaryRepresentation(bounds, &quartzFrame),
+                  quartzFrame.width >= 400,
+                  quartzFrame.height >= 300 else { continue }
+            return InputMonitoringGuidePlacement.appKitFrame(
+                fromQuartzFrame: quartzFrame,
+                primaryScreenMaxY: primaryScreenMaxY
+            )
+        }
+        return nil
+    }
+}
+
 @MainActor
 final class InputMonitoringGuideController: NSObject, NSWindowDelegate {
     private let appURL: URL
@@ -33,6 +110,7 @@ final class InputMonitoringGuideController: NSObject, NSWindowDelegate {
     private let onPermissionGranted: () -> Void
     private var panel: NSPanel?
     private var permissionTimer: Timer?
+    private var windowTrackingTimer: Timer?
     private var didReportPermission = false
 
     init(appURL: URL = Bundle.main.bundleURL, onPermissionGranted: @escaping () -> Void) {
@@ -48,21 +126,21 @@ final class InputMonitoringGuideController: NSObject, NSWindowDelegate {
 
         let panel = panel ?? makePanel()
         self.panel = panel
-        position(panel)
+        positionAtScreenCorner(panel)
         panel.orderFrontRegardless()
         startPermissionTimer()
+        startWindowTrackingTimer()
+        followSystemSettingsWindow()
         refreshPermission()
     }
 
     func hide() {
-        permissionTimer?.invalidate()
-        permissionTimer = nil
+        stopTimers()
         panel?.orderOut(nil)
     }
 
     func windowWillClose(_ notification: Notification) {
-        permissionTimer?.invalidate()
-        permissionTimer = nil
+        stopTimers()
     }
 
     @objc private func refreshPermission() {
@@ -112,7 +190,7 @@ final class InputMonitoringGuideController: NSObject, NSWindowDelegate {
         return panel
     }
 
-    private func position(_ panel: NSPanel) {
+    private func positionAtScreenCorner(_ panel: NSPanel) {
         let mouseLocation = NSEvent.mouseLocation
         let screen = NSScreen.screens.first(where: { $0.frame.contains(mouseLocation) }) ?? NSScreen.main
         guard let visibleFrame = screen?.visibleFrame else {
@@ -128,6 +206,30 @@ final class InputMonitoringGuideController: NSObject, NSWindowDelegate {
         panel.setFrameOrigin(origin)
     }
 
+    @objc private func followSystemSettingsWindow() {
+        guard let panel,
+              let primaryScreen = NSScreen.screens.first,
+              let settingsFrame = SystemSettingsWindowLocator.frame(
+                primaryScreenMaxY: primaryScreen.frame.maxY
+              ),
+              let screen = screen(containingMostOf: settingsFrame) else { return }
+
+        let origin = InputMonitoringGuidePlacement.origin(
+            panelSize: panel.frame.size,
+            beside: settingsFrame,
+            in: screen.visibleFrame
+        )
+        guard abs(panel.frame.origin.x - origin.x) >= 0.5
+                || abs(panel.frame.origin.y - origin.y) >= 0.5 else { return }
+        panel.setFrameOrigin(origin)
+    }
+
+    private func screen(containingMostOf frame: CGRect) -> NSScreen? {
+        NSScreen.screens.max { first, second in
+            first.frame.intersection(frame).area < second.frame.intersection(frame).area
+        }
+    }
+
     private func startPermissionTimer() {
         permissionTimer?.invalidate()
         let timer = Timer(
@@ -141,12 +243,38 @@ final class InputMonitoringGuideController: NSObject, NSWindowDelegate {
         permissionTimer = timer
     }
 
+    private func startWindowTrackingTimer() {
+        windowTrackingTimer?.invalidate()
+        let timer = Timer(
+            timeInterval: 0.12,
+            target: self,
+            selector: #selector(followSystemSettingsWindow),
+            userInfo: nil,
+            repeats: true
+        )
+        RunLoop.main.add(timer, forMode: .common)
+        windowTrackingTimer = timer
+    }
+
+    private func stopTimers() {
+        permissionTimer?.invalidate()
+        permissionTimer = nil
+        windowTrackingTimer?.invalidate()
+        windowTrackingTimer = nil
+    }
+
     private func revealInFinder() {
         if location == .translocated {
             NSWorkspace.shared.open(URL(fileURLWithPath: "/Applications", isDirectory: true))
         } else {
             NSWorkspace.shared.activateFileViewerSelecting([appURL])
         }
+    }
+}
+
+private extension CGRect {
+    var area: CGFloat {
+        isNull || isInfinite ? 0 : width * height
     }
 }
 
