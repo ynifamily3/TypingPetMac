@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.10.0 - 2026-09-27
+
+- Simplify the menu bar menu to the essential pet, position, permission, login, and quit actions.
+- Show key-input monitoring availability in green or red when the menu opens.
+
 ## 0.9.1 - 2026-09-25
 
 - Show the native diagonal frame-resize cursor over the pet's resize handle.

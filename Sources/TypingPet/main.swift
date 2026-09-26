@@ -999,13 +999,9 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
     private var keyMonitor: GlobalKeyMonitor!
     private var menu: NSMenu!
     private var petVisibilityItem: NSMenuItem!
-    private var alwaysOnTopItem: NSMenuItem!
     private var positionLockedItem: NSMenuItem!
     private var loginItem: NSMenuItem!
-    private var permissionItem: NSMenuItem!
     private var monitoringStatusItem: NSMenuItem!
-    private var reactionCountItem: NSMenuItem!
-    private var resetImagesItem: NSMenuItem!
     private var permissionRetryTimer: Timer?
     private var didShowPermissionAlert = false
     private var settingsWindowController: SettingsWindowController?
@@ -1054,16 +1050,9 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
 
     func menuWillOpen(_ menu: NSMenu) {
         petVisibilityItem.title = petController.isPetVisible ? "펫 숨기기" : "펫 다시 표시"
-        alwaysOnTopItem.state = petController.isAlwaysOnTop ? .on : .off
         positionLockedItem.state = petController.isPositionLocked ? .on : .off
         loginItem.state = SMAppService.mainApp.status == .enabled ? .on : .off
-        let permissionGranted = CGPreflightListenEventAccess()
-        monitoringStatusItem.title = keyMonitor.isRunning
-            ? "키 입력 감지: 연결됨"
-            : (permissionGranted ? "키 입력 감지: 다시 연결 중" : "키 입력 감지: 권한 필요")
-        permissionItem.title = permissionGranted ? "입력 모니터링 설정 열기…" : "입력 모니터링 권한 열기…"
-        reactionCountItem.title = "현재 반응 이미지: \(imageLibrary.reactionURLs.count)장"
-        resetImagesItem.isEnabled = imageLibrary.usesCustomImages
+        updateMonitoringStatusItem()
     }
 
     @objc private func toggleAlwaysOnTop() {
@@ -1256,58 +1245,40 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
 
         menu = NSMenu()
         menu.delegate = self
+        menu.autoenablesItems = false
 
-        menu.addItem(makeMenuItem("설정…", action: #selector(showSettings), keyEquivalent: ","))
+        menu.addItem(makeMenuItem("설정", action: #selector(showSettings), keyEquivalent: ","))
         petVisibilityItem = makeMenuItem("펫 숨기기", action: #selector(togglePetVisibility))
         menu.addItem(petVisibilityItem)
         menu.addItem(.separator())
 
-        alwaysOnTopItem = makeMenuItem("항상 위에 표시", action: #selector(toggleAlwaysOnTop))
         positionLockedItem = makeMenuItem("위치 잠금 (클릭 통과)", action: #selector(togglePositionLock))
-        menu.addItem(alwaysOnTopItem)
         menu.addItem(positionLockedItem)
         menu.addItem(makeMenuItem("위치 초기화", action: #selector(resetPosition)))
-
-        let sizeItem = NSMenuItem(title: "크기", action: nil, keyEquivalent: "")
-        let sizeMenu = NSMenu()
-        sizeMenu.addItem(makeMenuItem("작게", action: #selector(setSmallSize)))
-        sizeMenu.addItem(makeMenuItem("보통", action: #selector(setMediumSize)))
-        sizeMenu.addItem(makeMenuItem("크게", action: #selector(setLargeSize)))
-        sizeMenu.addItem(makeMenuItem("아주 크게", action: #selector(setExtraLargeSize)))
-        sizeItem.submenu = sizeMenu
-        menu.addItem(sizeItem)
-
-        let imagesItem = NSMenuItem(title: "이미지", action: nil, keyEquivalent: "")
-        let imagesMenu = NSMenu()
-        reactionCountItem = NSMenuItem(title: "현재 반응 이미지: 0장", action: nil, keyEquivalent: "")
-        reactionCountItem.isEnabled = false
-        imagesMenu.addItem(reactionCountItem)
-        imagesMenu.addItem(.separator())
-        imagesMenu.addItem(makeMenuItem("대기 이미지 변경…", action: #selector(changeIdleImage)))
-        imagesMenu.addItem(makeMenuItem("반응 이미지 교체…", action: #selector(replaceReactionImages)))
-        imagesMenu.addItem(makeMenuItem("이미지 폴더 가져오기…", action: #selector(importImageFolder)))
-        imagesMenu.addItem(makeMenuItem("폴더 규칙 보기…", action: #selector(showImageFolderRules)))
-        imagesMenu.addItem(.separator())
-        resetImagesItem = makeMenuItem("기본 이미지로 복원", action: #selector(resetImages))
-        imagesMenu.addItem(resetImagesItem)
-        imagesItem.submenu = imagesMenu
-        menu.addItem(imagesItem)
-
         menu.addItem(.separator())
-        monitoringStatusItem = NSMenuItem(title: "키 입력 감지: 확인 중", action: nil, keyEquivalent: "")
-        monitoringStatusItem.isEnabled = false
+        monitoringStatusItem = NSMenuItem(title: "키 입력 감지 (확인 중)", action: nil, keyEquivalent: "")
+        monitoringStatusItem.isEnabled = true
         menu.addItem(monitoringStatusItem)
-        permissionItem = makeMenuItem("입력 모니터링 권한 열기…", action: #selector(openInputMonitoringSettings))
-        menu.addItem(permissionItem)
-        menu.addItem(makeMenuItem("키 입력 감지 다시 시작", action: #selector(restartMonitoring)))
-        menu.addItem(makeMenuItem("반응 이미지 테스트", action: #selector(previewReaction)))
+        updateMonitoringStatusItem()
+        menu.addItem(makeMenuItem("입력 모니터링 설정", action: #selector(openInputMonitoringSettings)))
+        menu.addItem(.separator())
 
         loginItem = makeMenuItem("로그인 시 자동 실행", action: #selector(toggleLaunchAtLogin))
         menu.addItem(loginItem)
-
-        menu.addItem(.separator())
         menu.addItem(makeMenuItem("Typing Pet 종료", action: #selector(quit), keyEquivalent: "q"))
         statusItem.menu = menu
+    }
+
+    private func updateMonitoringStatusItem() {
+        let isAvailable = keyMonitor?.isRunning == true
+        let title = isAvailable ? "키 입력 감지 (가능)" : "키 입력 감지 (불가능)"
+        monitoringStatusItem.attributedTitle = NSAttributedString(
+            string: title,
+            attributes: [
+                .font: NSFont.menuFont(ofSize: 0),
+                .foregroundColor: isAvailable ? NSColor.systemGreen : NSColor.systemRed
+            ]
+        )
     }
 
     private func makeMenuItem(
