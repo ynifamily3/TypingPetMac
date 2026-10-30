@@ -163,7 +163,7 @@ final class InputMonitoringGuideController: NSObject, NSWindowDelegate {
             panel.orderFrontRegardless()
         }
         startPermissionTimer()
-        startWindowTrackingTimer()
+        updateWindowTrackingTimer()
         followSystemSettingsWindow()
         refreshPermission()
     }
@@ -218,6 +218,7 @@ final class InputMonitoringGuideController: NSObject, NSWindowDelegate {
                 y: min(max(panel.frame.minY, screen.visibleFrame.minY), screen.visibleFrame.maxY - panel.frame.height)
             ))
         }
+        updateWindowTrackingTimer()
         followSystemSettingsWindow()
     }
 
@@ -305,8 +306,14 @@ final class InputMonitoringGuideController: NSObject, NSWindowDelegate {
         permissionTimer = timer
     }
 
-    private func startWindowTrackingTimer() {
-        windowTrackingTimer?.invalidate()
+    private func updateWindowTrackingTimer() {
+        let shouldTrack = model.phase != .preview && model.phase != .complete && panel?.isVisible == true
+        if !shouldTrack {
+            windowTrackingTimer?.invalidate()
+            windowTrackingTimer = nil
+            return
+        }
+        guard windowTrackingTimer == nil else { return }
         let timer = Timer(
             timeInterval: 0.12,
             target: self,

@@ -148,8 +148,11 @@ final class PetPackStore {
         }
     }
 
+    func rawConfiguration(for set: PetImageSet) -> PetPackConfiguration {
+        configurations[set.id.uuidString] ?? makeConfiguration(for: set, includeLegacyKeys: loadError != nil)
+    }
     func configuration(for set: PetImageSet) -> PetPackConfiguration {
-        displayConfiguration(configurations[set.id.uuidString] ?? makeConfiguration(for: set, includeLegacyKeys: loadError != nil), for: set)
+        displayConfiguration(rawConfiguration(for: set), for: set)
     }
     func displayConfiguration(_ pack: PetPackConfiguration, for set: PetImageSet) -> PetPackConfiguration {
         set.isBuiltIn ? pack.localizingBuiltInNames(language: localization.language) : pack
@@ -166,8 +169,9 @@ final class PetPackStore {
         pack.presets.first { $0.id == id }.flatMap { imageURL(for: $0, in: set) }
     }
     var idleURL: URL? {
-        let pack = activeConfiguration
-        return pack.idle.presetIDs.first.flatMap { imageURL(id: $0, in: pack, set: library.activeSet) }
+        let set = library.activeSet
+        let pack = rawConfiguration(for: set)
+        return pack.idle.presetIDs.first.flatMap { imageURL(id: $0, in: pack, set: set) }
     }
 
     func save(_ pack: PetPackConfiguration, for set: PetImageSet) throws {
@@ -338,7 +342,7 @@ final class PetPackStore {
               selections.allSatisfy({ !$0.presetIDs.isEmpty && Set($0.presetIDs).count == $0.presetIDs.count && Set($0.presetIDs).isSubset(of: ids) }),
               Set(pack.mappings.map(\.stroke)).count == pack.mappings.count else { throw PetPackError.invalidSelection }
         for preset in pack.presets {
-            guard let url = imageURL(for: preset, in: set), NSImage(contentsOf: url) != nil else { throw PetPackError.invalidPreset }
+            guard let url = imageURL(for: preset, in: set), library.image(for: url) != nil else { throw PetPackError.invalidPreset }
         }
     }
 

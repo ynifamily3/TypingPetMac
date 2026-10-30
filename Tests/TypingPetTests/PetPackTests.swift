@@ -376,6 +376,22 @@ final class PetPackTests: XCTestCase {
         XCTAssertFalse(store.configuration(for: emptyCopy).isUsable)
     }
 
+    @MainActor func testPackEditorAndLibraryShareImageCacheAndInvalidateOnDeletion() throws {
+        let f = try Fixture(); defer { f.cleanup() }
+        let store = f.store()
+        let editor = PackEditorModel(store: store)
+        let preset = try XCTUnwrap(editor.draft.presets.first)
+        let url = try XCTUnwrap(store.imageURL(for: preset, in: editor.selectedSet))
+
+        let editorImage = try XCTUnwrap(editor.image(for: preset))
+        let libraryImage = try XCTUnwrap(f.library.image(for: url))
+        XCTAssertTrue(editorImage === libraryImage)
+
+        f.library.clearCache()
+        let reloadedImage = try XCTUnwrap(editor.image(for: preset))
+        XCTAssertFalse(reloadedImage === editorImage)
+    }
+
     private func samplePack() -> PetPackConfiguration {
         PetPackConfiguration(name: "Test", presets: [],
             unassigned: PresetSelection(presetIDs: ["a", "b"], mode: .cycle),

@@ -465,4 +465,33 @@ final class TodoPersistenceTests: XCTestCase {
             XCTAssertThrowsError(try state.validate())
         }
     }
+
+    @MainActor func testIdleTicksDoNotPublishUntilDayRollsOverOrSessionRuns() throws {
+        let c = TestClock()
+        let suite = "TypingPetIdleTickTests-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let file = try temporaryFile()
+        let store = TodoStore(url: file, defaults: defaults, monotonicNow: { c.uptime }, wallNow: { c.date }, idleSeconds: { 0 })
+        var publications = 0
+        let cancellable = store.objectWillChange.sink { _ in publications += 1 }
+        defer { cancellable.cancel() }
+
+        for _ in 0..<5 {
+            c.advance(1)
+            store.tick()
+        }
+        XCTAssertEqual(publications, 0)
+
+        c.advance(86_400)
+        store.tick()
+        XCTAssertEqual(publications, 1)
+
+        var id: UUID?
+        store.change { id = $0.addTodo("Run"); $0.start(id!) }
+        let baseline = publications
+        c.advance(1)
+        store.tick()
+        XCTAssertEqual(publications, baseline + 1)
+    }
 }

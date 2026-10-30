@@ -85,7 +85,6 @@ final class TodoBubbleWindowController {
     private weak var pet: NSWindow?
     private var subscriptions: Set<AnyCancellable> = []
     private var timer: Timer?
-    private var lastTick: TimeInterval = 0
     private var notificationTokens: [NSObjectProtocol] = []
     private var mouseMonitors: [Any] = []
     private var bubbleFrame: CGRect = .zero
@@ -133,11 +132,11 @@ final class TodoBubbleWindowController {
                 if event.type == .leftMouseDown || event.type == .rightMouseDown {
                     self.panel.makeFirstResponder(nil)
                 }
-                self.updatePointerState()
+                self.handlePointerMotion()
             }
         }) { mouseMonitors.append(monitor) }
         if let monitor = NSEvent.addLocalMonitorForEvents(matching: [.mouseMoved, .leftMouseDragged], handler: { [weak self] event in
-            MainActor.assumeIsolated { self?.updatePointerState() }
+            MainActor.assumeIsolated { self?.handlePointerMotion() }
             return event
         }) { mouseMonitors.append(monitor) }
         // Menus opened from the bubble take the pointer away from it; keep it shown meanwhile.
@@ -168,17 +167,14 @@ final class TodoBubbleWindowController {
                 }
             })
         }
-        let timer = Timer(timeInterval: 0.2, repeats: true) { [weak self] _ in
+        let timer = Timer(timeInterval: 1.0, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated {
                 guard let self else { return }
-                let now = ProcessInfo.processInfo.systemUptime
-                if now - self.lastTick >= 1 {
-                    self.lastTick = now
-                    self.store.tick()
-                }
-                self.synchronize()
+                self.store.tick()
+                self.handlePointerMotion()
             }
         }
+        timer.tolerance = 0.1
         self.timer = timer
         RunLoop.main.add(timer, forMode: .common)
         synchronize()
@@ -235,8 +231,8 @@ final class TodoBubbleWindowController {
             panel.orderOut(nil); entry.orderOut(nil); return
         }
         let visible = (pet.screen ?? NSScreen.main)?.visibleFrame ?? pet.frame
-        panel.level = pet.level
-        entry.level = pet.level
+        if panel.level != pet.level { panel.level = pet.level }
+        if entry.level != pet.level { entry.level = pet.level }
         let preferences = store.engine.state.featurePreferences
         if (preferences.enabled && !preferences.bubbleHidden) || store.errorMessage != nil {
             let zoom = CGFloat(store.zoom)
@@ -258,6 +254,18 @@ final class TodoBubbleWindowController {
         } else {
             panel.orderOut(nil)
         }
+        updateEntryVisibility(pet: pet, visible: visible)
+    }
+
+    private func handlePointerMotion() {
+        if let pet, pet.isVisible {
+            let visible = (pet.screen ?? NSScreen.main)?.visibleFrame ?? pet.frame
+            updateEntryVisibility(pet: pet, visible: visible)
+        }
+        updatePointerState()
+    }
+
+    private func updateEntryVisibility(pet: NSWindow, visible: CGRect) {
         let mouse = NSEvent.mouseLocation
         let entryFrame = TodoBubbleGeometry.entryFrame(pet: pet.frame, visible: visible)
         // Show the entry before pointer avoidance moves the pet away.
@@ -266,7 +274,9 @@ final class TodoBubbleWindowController {
         if nearPet || overEntry {
             if entry.frame != entryFrame { entry.setFrame(entryFrame, display: true) }
             if !entry.isVisible { entry.orderFrontRegardless() }
-        } else { entry.orderOut(nil) }
+        } else if entry.isVisible {
+            entry.orderOut(nil)
+        }
     }
 
     private func updatePointerState() {
@@ -276,7 +286,8 @@ final class TodoBubbleWindowController {
         let overPet = pet.frame.insetBy(dx: -8, dy: -8).contains(mouse) || (entry.isVisible && entry.frame.contains(mouse))
         let pointerWants = store.bubbleVisibility == .always ? overBubble || overPet : overPet || (revealed && overBubble)
         // Typing, open popovers and menus, an expired timer, an absence notice, and errors always keep the bubble readable.
-        let popoverOpen = NSApp.windows.contains { $0.isVisible && String(describing: type(of: $0)).contains("Popover") }
+        let popoverOpen = !(panel.childWindows ?? []).isEmpty
+            || NSApp.windows.contains { $0 !== panel && $0 !== entry && $0 !== pet && $0.isVisible && $0.className.contains("Popover") }
         mustShow = panel.isKeyWindow || popoverOpen || menuTracking
             || store.engine.activeSession?.status == .expired || store.absence != nil || store.errorMessage != nil
         // Pointing at the bubble or the pet stops the bouncing.

@@ -145,6 +145,7 @@ final class TodoStore: ObservableObject {
     private let idleSeconds: () -> Double
     private var screenLocked = false
     private var attentionOnReturn: Date?
+    private var lastObservedDay: Date
     private let defaults: UserDefaults
     private static let zoomKey = "todoBubbleZoom"
     private static let visibilityKey = "todoBubbleVisibility"
@@ -166,6 +167,7 @@ final class TodoStore: ObservableObject {
         listStyle = defaults.string(forKey: Self.listStyleKey).flatMap(TodoListStyle.init(rawValue:)) ?? .full
         self.monotonicNow = monotonicNow
         lastCheckpoint = monotonicNow()
+        lastObservedDay = Calendar.current.startOfDay(for: wallNow())
         do {
             engine = FocusTimerEngine(state: try storage.load(), monotonicNow: monotonicNow, wallNow: wallNow)
         } catch {
@@ -189,11 +191,16 @@ final class TodoStore: ObservableObject {
     }
     func tick() {
         guard !loadBlocked else { return }
+        let currentDay = Calendar.current.startOfDay(for: wallNow())
+        if currentDay != lastObservedDay {
+            lastObservedDay = currentDay
+            objectWillChange.send()
+        }
         let previous = engine.activeSession?.status
-        engine.tick()
-        // Also publish date changes while the timer is idle.
-        objectWillChange.send()
-        if engine.activeSession?.status == .expired, previous != .expired { didExpire() }
+        if previous == .running {
+            engine.tick()
+            if engine.activeSession?.status == .expired, previous != .expired { didExpire() }
+        }
         if previous != engine.activeSession?.status || monotonicNow() - lastCheckpoint >= 5 {
             if engine.activeSession?.status == .running || previous != engine.activeSession?.status || errorMessage != nil { persist() }
         }

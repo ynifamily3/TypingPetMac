@@ -40,11 +40,16 @@ private enum TodoTimeText {
     static func quoted(_ title: String, limit: Int = 24) -> String {
         title.count > limit ? String(title.prefix(limit)).trimmingCharacters(in: .whitespaces) + "…" : title
     }
-    static var day: DateFormatter {
-        let formatter = DateFormatter()
-        formatter.locale = AppLocalization.shared.locale
-        formatter.dateFormat = L("EEEE, MMM d")
-        return formatter
+    @MainActor private static let cachedDayFormatter = DateFormatter()
+    @MainActor private static var cachedDayLanguage: String?
+    @MainActor static var day: DateFormatter {
+        let language = AppLocalization.shared.language
+        if cachedDayLanguage != language {
+            cachedDayLanguage = language
+            cachedDayFormatter.locale = AppLocalization.shared.locale
+            cachedDayFormatter.dateFormat = L("EEEE, MMM d")
+        }
+        return cachedDayFormatter
     }
 }
 
@@ -971,7 +976,6 @@ private struct DockBounce: ViewModifier, Animatable {
 
 // Preferences do not cross the hosting view and scroll view reliably, so report sizes directly.
 private struct SizeReader: View {
-    @ObservedObject private var localization = AppLocalization.shared
     let onChange: (CGSize) -> Void
     var body: some View {
         GeometryReader { proxy in
@@ -1498,7 +1502,6 @@ struct TodoEntryButton: View {
 // MARK: - Tomato
 
 private struct TomatoRing: View {
-    @ObservedObject private var localization = AppLocalization.shared
     let fraction: Double
     var paused = false
     let size: CGFloat
@@ -1535,7 +1538,6 @@ private struct TomatoRing: View {
 }
 
 private struct TomatoIcon: View {
-    @ObservedObject private var localization = AppLocalization.shared
     var body: some View {
         GeometryReader { proxy in
             let s = min(proxy.size.width, proxy.size.height)

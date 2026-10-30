@@ -28,7 +28,6 @@ final class PackEditorModel: ObservableObject {
     @Published var errorMessage: String?
     @Published private(set) var statusMessage = ""
     private let onChange: (Bool) -> Void
-    private var imageCache: [URL: NSImage] = [:]
     var onSelectionChanged: ((UUID) -> Void)?
 
     init(store: PetPackStore, onChange: @escaping (Bool) -> Void = { _ in }) {
@@ -73,17 +72,13 @@ final class PackEditorModel: ObservableObject {
     }
 
     func image(for preset: PetImagePreset, in set: PetImageSet? = nil) -> NSImage? {
-        guard let url = store.imageURL(for: preset, in: set ?? selectedSet) else { return nil }
-        if let cached = imageCache[url] { return cached }
-        guard let image = NSImage(contentsOf: url) else { return nil }
-        imageCache[url] = image
-        return image
+        store.imageURL(for: preset, in: set ?? selectedSet).flatMap { store.library.image(for: $0) }
     }
     func image(id: String?) -> NSImage? {
         id.flatMap { value in draft.presets.first { $0.id == value } }.flatMap { image(for: $0) }
     }
     func cover(for set: PetImageSet) -> NSImage? {
-        let pack = configuration(for: set)
+        let pack = set.id == selectedSetID ? draft : store.rawConfiguration(for: set)
         return pack.presets.first(where: { $0.id == pack.idle.presetIDs.first }).flatMap { image(for: $0, in: set) }
     }
     func name(id: String) -> String { displayConfiguration.presets.first { $0.id == id }?.name ?? "" }

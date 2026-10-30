@@ -87,6 +87,11 @@ final class PetImageLibrary {
     private let imagesDirectory: URL
     private let setsDirectory: URL
     private var customSets: [PetImageSet]
+    private let imageCache: NSCache<NSURL, NSImage> = {
+        let cache = NSCache<NSURL, NSImage>()
+        cache.countLimit = 64
+        return cache
+    }()
 
     init(fileManager: FileManager = .default, defaults: UserDefaults = AppEnvironment.defaults, imagesDirectory: URL? = nil) {
         self.fileManager = fileManager
@@ -140,7 +145,10 @@ final class PetImageLibrary {
         set { defaults.set(newValue.uuidString, forKey: Keys.activeSetID) }
     }
 
-    var activeSet: PetImageSet { imageSets.first { $0.id == activeSetID } ?? Self.builtInSet }
+    var activeSet: PetImageSet {
+        let id = activeSetID
+        return id == Self.builtInID ? Self.builtInSet : (customSets.first { $0.id == id } ?? Self.builtInSet)
+    }
     var idleURL: URL? { idleURL(for: activeSet) }
     var reactionURLs: [URL] { reactionURLs(for: activeSet) }
     var usesCustomImages: Bool { activeSetID != Self.builtInID }
@@ -165,9 +173,37 @@ final class PetImageLibrary {
         set.reactionFileNames.compactMap { resolvedURL(fileName: $0, set: set) }
     }
 
+    func image(for url: URL) -> NSImage? {
+        let key = url as NSURL
+        if let cached = imageCache.object(forKey: key) {
+            return cached
+        }
+        guard let image = NSImage(contentsOf: url) else { return nil }
+        imageCache.setObject(image, forKey: key)
+        return image
+    }
+
+    func thumbnail(for set: PetImageSet) -> NSImage? {
+        guard let url = idleURL(for: set) else { return nil }
+        return image(for: url)
+    }
+
+    func invalidateCache(for url: URL) {
+        imageCache.removeObject(forKey: url as NSURL)
+    }
+
+    func clearCache() {
+        imageCache.removeAllObjects()
+    }
+
     func activateSet(id: UUID) throws {
-        guard imageSets.contains(where: { $0.id == id }) else { throw PetImageLibraryError.imageSetNotFound }
+        guard id == Self.builtInID || customSets.contains(where: { $0.id == id }) else { throw PetImageLibraryError.imageSetNotFound }
+        let previousSet = activeSet
         activeSetID = id
+        if previousSet.id != id {
+            let idle = idleURL(for: previousSet)
+            reactionURLs(for: previousSet).filter { $0 != idle }.forEach { invalidateCache(for: $0) }
+        }
     }
 
     @discardableResult
@@ -220,7 +256,10 @@ final class PetImageLibrary {
         guard let index = customSets.firstIndex(where: { $0.id == id }) else {
             throw PetImageLibraryError.imageSetNotFound
         }
+        let setToDelete = customSets[index]
+        let cachedURLs = [idleURL(for: setToDelete)].compactMap { $0 } + reactionURLs(for: setToDelete)
         customSets.remove(at: index)
+        cachedURLs.forEach { invalidateCache(for: $0) }
         if activeSetID == id { activeSetID = Self.builtInID }
         persistGallery()
     }
@@ -355,7 +394,8 @@ final class PetImageLibrary {
     }
 
     private func repairActiveSelection() {
-        if !imageSets.contains(where: { $0.id == activeSetID }) { activeSetID = Self.builtInID }
+        let id = activeSetID
+        if id != Self.builtInID, !customSets.contains(where: { $0.id == id }) { activeSetID = Self.builtInID }
     }
 
     private func migrateLegacySelectionIfNeeded() {

@@ -120,11 +120,11 @@ final class TypingPetSettingsModel: ObservableObject {
     var selectedSet: PetImageSet? { imageSets.first { $0.id == selectedSetID } }
 
     func thumbnail(for set: PetImageSet) -> NSImage? {
-        library.idleURL(for: set).flatMap(NSImage.init(contentsOf:))
+        library.thumbnail(for: set)
     }
 
     func ruleImage(for rule: KeyReactionRule) -> NSImage? {
-        keyStore.imageURL(for: rule).flatMap(NSImage.init(contentsOf:))
+        keyStore.imageURL(for: rule).flatMap { library.image(for: $0) }
     }
 
     func refresh() {
@@ -355,7 +355,6 @@ private enum SettingsMetrics {
 }
 
 private struct FlatSettingsSection<Content: View>: View {
-    @ObservedObject private var localization = AppLocalization.shared
     let title: String
     let content: Content
 
@@ -377,7 +376,6 @@ private struct FlatSettingsSection<Content: View>: View {
 }
 
 private struct SettingsRow<Content: View>: View {
-    @ObservedObject private var localization = AppLocalization.shared
     let content: Content
 
     init(@ViewBuilder content: () -> Content) {
@@ -391,7 +389,6 @@ private struct SettingsRow<Content: View>: View {
 }
 
 private struct SettingsSliderRow: View {
-    @ObservedObject private var localization = AppLocalization.shared
     let title: String
     @Binding var value: Double
     let range: ClosedRange<Double>
@@ -411,7 +408,6 @@ private struct SettingsSliderRow: View {
 }
 
 private struct SettingsToggleRow: View {
-    @ObservedObject private var localization = AppLocalization.shared
     let title: String
     @Binding var isOn: Bool
     var isEnabled = true
@@ -433,7 +429,6 @@ private struct SettingsToggleRow: View {
 }
 
 private struct SettingsNote: View {
-    @ObservedObject private var localization = AppLocalization.shared
     let text: String
 
     var body: some View {
@@ -619,9 +614,13 @@ struct GeneralSettingsView: View {
             }
             .padding(22)
         }
-        .onAppear { model.refreshPermissions() }
-        .onReceive(Timer.publish(every: 2, on: .main, in: .common).autoconnect()) { _ in
-            if scope != .pet { model.refreshPermissions() }
+        .onAppear { if scope != .pet { model.refreshPermissions() } }
+        .task(id: scope) {
+            guard scope != .pet else { return }
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 2_000_000_000)
+                if !Task.isCancelled { model.refreshPermissions() }
+            }
         }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             if scope != .pet { model.refreshPermissions() }
@@ -788,7 +787,6 @@ struct TodoSettingsView: View {
 
 // Both steps share one frame, so the minus and plus buttons render at the same size.
 private struct ZoomStepButton: View {
-    @ObservedObject private var localization = AppLocalization.shared
     let symbol: String
     let label: String
     let enabled: Bool
